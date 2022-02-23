@@ -1,0 +1,12 @@
+C:\Users\herma\source\libraries\CLMS\bin\Debug\net5.0\CLMS.deps.json
+C:\Users\herma\source\libraries\CLMS\bin\Debug\net5.0\CLMS.dll
+C:\Users\herma\source\libraries\CLMS\bin\Debug\net5.0\ref\CLMS.dll
+C:\Users\herma\source\libraries\CLMS\bin\Debug\net5.0\CLMS.pdb
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.csproj.AssemblyReference.cache
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.AssemblyInfoInputs.cache
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.AssemblyInfo.cs
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.csproj.CoreCompileInputs.cache
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.dll
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\ref\CLMS.dll
+C:\Users\herma\source\libraries\CLMS\obj\Debug\net5.0\CLMS.pdb
