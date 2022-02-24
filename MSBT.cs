@@ -68,6 +68,8 @@ namespace CLMS
         #region private
 
         Header header;
+        private bool hasLBL1;
+        private bool hasNLI1;
         private bool hasATO1;
         private bool hasATR1;
         private bool hasTSY1;
@@ -294,9 +296,11 @@ namespace CLMS
             bool isATR1 = false;
             bool isTSY1 = false;
             bool isTXT2 = false;
+            bool isNLI1 = false;
 
             // buffers
             string[] labelBuf = new string[0];
+            Dictionary<uint, uint> numLineBuff = new Dictionary<uint, uint>();
             Attribute[] attributeBuf = new Attribute[0];
             int[] styleIndexesBuf = new int[0];
             Message[] messageBuf = new Message[0];
@@ -317,7 +321,14 @@ namespace CLMS
                     case "LBL1":
                         isLBL1 = true;
 
+                        hasLBL1 = true;
                         labelBuf = getLabels(bdr);
+                        break;
+                    case "NLI1":
+                        isNLI1 = true;
+
+                        hasNLI1 = true;
+                        numLineBuff = getNumLines(bdr);
                         break;
                     case "ATO1":
                         isATO1 = true;
@@ -362,6 +373,11 @@ namespace CLMS
                 {
                     Messages.Add(labelBuf[i], messageBuf[i]);
                 }
+            }
+            else if (isNLI1 && isTXT2)
+            {
+                foreach (var line in numLineBuff)
+                    Messages.Add(line.Key.ToString(), messageBuf[line.Value]);
             }
 
             // debug printing
@@ -408,8 +424,18 @@ namespace CLMS
 
             header.write(bdw);
 
-            writeLBL1(bdw, Messages.Keys.ToArray(), true);
-            bdw.align(0x10, 0xAB);
+            if (hasLBL1)
+            {
+                writeLBL1(bdw, Messages.Keys.ToArray(), true);
+                bdw.align(0x10, 0xAB);
+                sectionNumber++;
+            }
+            if (hasNLI1)
+            {
+                writeNLI1(bdw, Messages.Keys.ToArray(), Messages.Values.ToArray());
+                bdw.align(0x10, 0xAB);
+                sectionNumber++;
+            }
             if (hasATO1)
             {
                 writeATO1(bdw, ATO1Content);
@@ -436,7 +462,7 @@ namespace CLMS
             writeTXT2(bdw, Messages.Values.ToArray(), isWMBT);
             bdw.align(0x10, 0xAB);
 
-            sectionNumber += 2;
+            sectionNumber++;
 
             if (isWMBT)
             {
@@ -452,6 +478,20 @@ namespace CLMS
             long sectionSizePosBuf = writeSectionHeader(bdw, "LBL1");
 
             parseLabels(bdw, labels, optimize);
+
+            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+        }
+        private void writeNLI1(BinaryDataWriter bdw, string[] labels, Message[] messages)
+        {
+            long sectionSizePosBuf = writeSectionHeader(bdw, "NLI1");
+            bdw.Write((uint)messages.Length);
+
+            for (int i = 0; i < messages.Length; i++)
+            {
+                //ID
+                bdw.Write(uint.Parse(labels[i]));
+                bdw.Write(i);
+            }
 
             calcAndSetSectionSize(bdw, sectionSizePosBuf);
         }

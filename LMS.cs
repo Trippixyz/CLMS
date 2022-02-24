@@ -140,6 +140,19 @@ namespace CLMS
 
             return labels;
         }
+        public static Dictionary<uint, uint> getNumLines(BinaryDataReader bdr)
+        {
+            uint numOfLines = bdr.ReadUInt32();
+
+            Dictionary<uint, uint> lines = new Dictionary<uint, uint>();
+            for (uint i = 0; i < numOfLines; i++)
+            {
+                uint id = bdr.ReadUInt32();
+                uint index = bdr.ReadUInt32();
+                lines.Add(id, index);
+            }
+            return lines;
+        }
         public static Attribute[] getAttributes(BinaryDataReader bdr, long cSectionSize)
         {
             long startPosition = bdr.Position;
