@@ -446,7 +446,7 @@ namespace CLMS
         {
             long sectionSizePosBuf = writeSectionHeader(bdw, "CLR1");
 
-            bdw.Write((uint)(colors.Length));
+            bdw.Write((uint)colors.Length);
 
             foreach (Color cColor in colors)
             {
