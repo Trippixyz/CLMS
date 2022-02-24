@@ -41,6 +41,7 @@ namespace CLMS
         public Dictionary<string, Message> Messages = new Dictionary<string, Message>();
 
         // misc
+        public bool isWMBT = false;
         public bool hasAttributes
         {
             get
@@ -305,9 +306,8 @@ namespace CLMS
 
             bdr.ByteOrder = header.byteOrder;
 
-            for (int i = 0; i < header.numberOfSections; i++)
+            for (int i = 0; (i < header.numberOfSections || bdr.EndOfStream) || (i < header.numberOfSections && bdr.EndOfStream); i++)
             {
-                // to avoid some confusion. Through my code i either named the blocks "Block" or "Section"!!
                 string cSectionMagic = bdr.ReadASCIIString(4);
                 uint cSectionSize = bdr.ReadUInt32();
                 bdr.skipBytes(8);
@@ -340,6 +340,13 @@ namespace CLMS
                     case "TXT2":
                         isTXT2 = true;
 
+                        messageBuf = getStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
+                        break;
+                    case "TXTW": // if its a WMBT (basically a MSBT but for WarioWare(?))
+                        isTXT2 = true;
+
+                        i++;
+                        isWMBT = true;
                         messageBuf = getStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
                         break;
                 }
@@ -426,10 +433,15 @@ namespace CLMS
                 bdw.align(0x10, 0xAB);
                 sectionNumber++;
             }
-            writeTXT2(bdw, Messages.Values.ToArray());
+            writeTXT2(bdw, Messages.Values.ToArray(), isWMBT);
             bdw.align(0x10, 0xAB);
 
             sectionNumber += 2;
+
+            if (isWMBT)
+            {
+                sectionNumber++;
+            }
 
             header.overwriteStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
 
@@ -505,9 +517,17 @@ namespace CLMS
 
             calcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void writeTXT2(BinaryDataWriter bdw, Message[] messages)
+        private void writeTXT2(BinaryDataWriter bdw, Message[] messages, bool isWMBT)
         {
-            long sectionSizePosBuf = writeSectionHeader(bdw, "TXT2");
+            long sectionSizePosBuf;
+            if (!isWMBT)
+            {
+                sectionSizePosBuf = writeSectionHeader(bdw, "TXT2");
+            }
+            else
+            {
+                sectionSizePosBuf = writeSectionHeader(bdw, "TXTW");
+            }
 
             long startPosition = bdw.Position;
             bdw.Write((uint)messages.Length);
