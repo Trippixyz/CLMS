@@ -3,6 +3,10 @@ An attempt to build a fully working LMS library written in c#.
 
 ## Requirements
 * NET 5.0
+* Syroot.BinaryData v2.0.2
+
+## Setting up
+* Install the required Syroot.BinaryData version using this: install-Package -version 2.0.2 Syroot.IO.BinaryData
 
 ## Features
 
