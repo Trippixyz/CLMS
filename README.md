@@ -17,5 +17,6 @@ An attempt to build a fully working LMS library written in c#.
 
 ## Credits
 * Trippixyz: Project Leader, Programmer, Tester, Github Manager
+* Kinnay: Reversing of the files
 * Ray Koopa: Syroot Library Developer
 * Jenrikku: Help with setting up a c# library, Motivation on pushing this to Github finally
