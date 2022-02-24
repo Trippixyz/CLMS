@@ -310,8 +310,11 @@ namespace CLMS
 
             bdr.ByteOrder = header.byteOrder;
 
-            for (int i = 0; (i < header.numberOfSections || bdr.EndOfStream) || (i < header.numberOfSections && bdr.EndOfStream); i++)
+            for (int i = 0; (i < header.numberOfSections) || (i < header.numberOfSections); i++)
             {
+                if (bdr.EndOfStream)
+                    continue;
+
                 string cSectionMagic = bdr.ReadASCIIString(4);
                 uint cSectionSize = bdr.ReadUInt32();
                 bdr.skipBytes(8);
