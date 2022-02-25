@@ -41,6 +41,41 @@ namespace CLMS
         public Dictionary<string, Message> Messages = new Dictionary<string, Message>();
 
         // misc
+        public bool usesMessageID
+        {
+            set
+            {
+                hasNLI1 = value;
+                hasLBL1 = !value;
+                if (value)
+                {
+                    bool areKeysParsable = true;
+                    string[] keys = Messages.Keys.ToArray();
+                    for (int i = 0; areKeysParsable && i < keys.Length; i++)
+                    {
+                        uint ignore;
+                        if (!uint.TryParse(keys[i], out ignore))
+                        {
+                            areKeysParsable = false;
+                        }
+                    }
+                    if (areKeysParsable)
+                    {
+                        usesMessageID = value;
+                    }
+                    else
+                    {
+                        (string key, Message message)[] pairs = getPairs();
+                        Messages.Clear();
+                        uint cMessageID = 0;
+                        foreach ((string key, Message message) in pairs)
+                        {
+                            Messages.Add(cMessageID.ToString(), message);
+                        }
+                    }
+                }
+            }
+        }
         public bool isWMBT = false;
         public bool hasAttributes
         {
@@ -300,7 +335,7 @@ namespace CLMS
 
             // buffers
             string[] labelBuf = new string[0];
-            Dictionary<uint, uint> numLineBuff = new Dictionary<uint, uint>();
+            Dictionary<uint, uint> numLineBuf = new Dictionary<uint, uint>();
             Attribute[] attributeBuf = new Attribute[0];
             int[] styleIndexesBuf = new int[0];
             Message[] messageBuf = new Message[0];
@@ -331,7 +366,7 @@ namespace CLMS
                         isNLI1 = true;
 
                         hasNLI1 = true;
-                        numLineBuff = getNumLines(bdr);
+                        numLineBuf = getNumLines(bdr);
                         break;
                     case "ATO1":
                         isATO1 = true;
@@ -379,7 +414,7 @@ namespace CLMS
             }
             else if (isNLI1 && isTXT2)
             {
-                foreach (var line in numLineBuff)
+                foreach (var line in numLineBuf)
                     Messages.Add(line.Key.ToString(), messageBuf[line.Value]);
             }
 
