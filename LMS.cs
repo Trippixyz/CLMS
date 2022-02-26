@@ -60,29 +60,6 @@ namespace CLMS
     }
     internal static class LMS
     {
-
-        // parsing into Message
-        public static Message Format(params object[] parameters)
-        {
-            Message result = new();
-
-            foreach (object parameter in parameters)
-            {
-                if (parameter is string)
-                {
-                    result.rawString += parameter;
-                }
-                else if (parameter is Tag)
-                {
-                    Tag tag = (Tag)parameter;
-                    tag.Index = (uint)result.rawString.Length;
-                    result.tags.Add(tag);
-                }
-            }
-
-            return result;
-        }
-
         #region section specific functions
         public static uint calcHashTableSlotsNum(BinaryDataReader bdr)
         {
@@ -520,7 +497,6 @@ namespace CLMS
 
             for (uint i = 0; i < sourceNum; i++)
             {
-
                 uint cSourceFileOffset = bdr.ReadUInt32();
                 long positionBuf = bdr.Position;
                 bdr.Position = startPosition + cSourceFileOffset;
@@ -533,9 +509,45 @@ namespace CLMS
 
             return sourceFiles;
         }
+
+        //wmbp
+        public static Language[] getWLNG(BinaryDataReader bdr)
+        {
+            long startPosition = bdr.Position;
+            uint languagesNum = bdr.ReadUInt32();
+            bdr.alignPos(0x10);
+            Language[] languages = new Language[languagesNum];
+
+            for (uint i = 0; i < languagesNum; i++)
+            {
+                uint cSourceFileOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+                bdr.Position = startPosition + cSourceFileOffset;
+
+                ushort cLanguageIndex = bdr.ReadUInt16();
+                byte cLanguageUnk0 = bdr.ReadByte();
+                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+
+                bdr.skipByte();
+                bdr.alignPos(0x10);
+
+                languages[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
+
+                bdr.Position = positionBuf;
+            }
+
+            return languages;
+        }
+        public static void getWSYL(BinaryDataReader bdr)
+        {
+            long startPosition = bdr.Position;
+            uint languagesNum = bdr.ReadUInt32();
+            bdr.alignPos(0x10);
+            Language[] languages = new Language[languagesNum];
+        }
         #endregion
 
-        // shared writing functions
+        #region shared writing functions
         public static void parseLabels(BinaryDataWriter bdw, string[] labels, bool optimize)
         {
             if (optimize)
@@ -555,6 +567,7 @@ namespace CLMS
 
             }
         }
+        #endregion
     }
 
     // msbt
@@ -632,7 +645,29 @@ namespace CLMS
         /// To check if the msbt has a attribute has attributes get the "hasAttributes" bool from the msbt class header.
         /// </summary>
         public Attribute attribute;
-        public string[] splitByTags()
+        
+        public Message(params object[] parameters)
+        {
+            foreach (object parameter in parameters)
+            {
+                if (parameter is string)
+                {
+                    rawString += parameter;
+                }
+                else if (parameter is Tag)
+                {
+                    Tag tag = (Tag)parameter;
+                    tag.Index = (uint)rawString.Length;
+                    tags.Add(tag);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Splits the 'rawString' by the tags in between it.
+        /// </summary>
+        /// <returns></returns>
+        public string[] SplitByTags()
         {
             List<uint> indexes = new List<uint>();
             foreach (Tag cTag in tags)
@@ -641,32 +676,28 @@ namespace CLMS
             }
             return rawString.SplitAt(indexes.ToArray());
         }
-        public string[] splitByTag(TagConfig tagConfig)
+        /// <summary>
+        /// Splits the 'rawString' by a specific tagConfig.
+        /// </summary>
+        /// <param name="tagConfig"></param>
+        /// <returns></returns>
+        public string[] SplitByTag(TagConfig tagConfig)
         {
             List<uint> indexes = new List<uint>();
             foreach (Tag cTag in tags)
             {
-                if (tagConfig.compareWithTag(cTag))
+                if (tagConfig.CompareWithTag(cTag))
                 {
                     indexes.Add(cTag.Index);
                 }
             }
             return rawString.SplitAt(indexes.ToArray());
         }
-        public string[] splitByTag(ushort group, ushort type)
-        {
-            List<uint> indexes = new List<uint>();
-            TagConfig tagConfig = new(group, type);
-            foreach (Tag cTag in tags)
-            {
-
-                if (tagConfig.compareWithTag(cTag))
-                {
-                    indexes.Add(cTag.Index);
-                }
-            }
-            return rawString.SplitAt(indexes.ToArray());
-        }
+        /// <summary>
+        /// Converts the Message object to 'params object[]'.
+        /// Each 'object' will either be 'System.String', or 'CLMS.Tag'.
+        /// </summary>
+        /// <returns></returns>
         public object[] ToParams()
         {
             List<object> parametersList = new List<object>();
@@ -701,18 +732,24 @@ namespace CLMS
         public ushort group;
         public ushort type;
 
+        public TagConfig(Tag aTag)
+        {
+            group = aTag.group;
+            type = aTag.type;
+        }
         public TagConfig(ushort aGroup, ushort aType)
         {
             group = aGroup;
             type = aType;
         }
+
         /// <summary>
         /// Compares the tag config with the tag.
         /// It only returns true, if both the group and type are matching.
         /// </summary>
         /// <param name="tag"></param>
         /// <returns></returns>
-        public bool compareWithTag(Tag tag)
+        public bool CompareWithTag(Tag tag)
         {
             return group == tag.group && type == tag.group;
         }
@@ -814,6 +851,7 @@ namespace CLMS
             setType(aType);
             offset = aOffset;
         }
+
         /// <summary>
         /// Sets the type.
         /// </summary>
@@ -861,6 +899,7 @@ namespace CLMS
         {
             setType(aType);
         }
+
         /// <summary>
         /// Sets the type.
         /// </summary>
@@ -896,13 +935,24 @@ namespace CLMS
         /// The base color index of a style. The location of the base colors is unknown.
         /// </summary>
         public int BaseColorIndex;
-
         public Style(int aRegionWidth, int aLineNumber, int aFontIndex, int aBaseColorIndex)
         {
             RegionWidth = aRegionWidth;
             LineNumber = aLineNumber;
             FontIndex = aFontIndex;
             BaseColorIndex = aBaseColorIndex;
+        }
+    }
+
+    //wmbp
+    public class Language
+    {
+        public string Name;
+        public byte unk0;
+        public Language(string aName, byte aUnk0)
+        {
+            Name = aName;
+            unk0 = aUnk0;
         }
     }
 
@@ -914,32 +964,6 @@ namespace CLMS
         public byte versionNumber;
         public ushort numberOfSections;
         public uint fileSize;
-        public void changeEndianess(ByteOrder aByteOrder)
-        {
-            byteOrder = aByteOrder;
-            if (encoding == Encoding.Unicode || encoding == Encoding.BigEndianUnicode)
-            {
-                if (aByteOrder == ByteOrder.LittleEndian)
-                {
-                    encoding = Encoding.Unicode;
-                }
-                else
-                {
-                    encoding = Encoding.BigEndianUnicode;
-                }
-            }
-            else if (encoding == Encoding.UTF32 || encoding == new UTF32Encoding(true, true))
-            {
-                if (aByteOrder == ByteOrder.LittleEndian)
-                {
-                    encoding = Encoding.UTF32;
-                }
-                else
-                {
-                    encoding = new UTF32Encoding(true, true);
-                }
-            }
-        }
         public Header()
         {
 
@@ -954,7 +978,10 @@ namespace CLMS
                     fileType = FileType.MSBT;
                     break;
                 case "MsgPrjBn":
-                    fileType= FileType.MSBP;
+                    fileType = FileType.MSBP;
+                    break;
+                case "WMsgPrjB":
+                    fileType = FileType.WMBP;
                     break;
             }
             byteOrder = (ByteOrder)bdr.ReadUInt16();
@@ -992,6 +1019,32 @@ namespace CLMS
             bdr.ReadBytes(0x0A);
 
             //PrintHeader(this);
+        }
+        public void changeByteOrder(ByteOrder aByteOrder)
+        {
+            byteOrder = aByteOrder;
+            if (encoding == Encoding.Unicode || encoding == Encoding.BigEndianUnicode)
+            {
+                if (aByteOrder == ByteOrder.LittleEndian)
+                {
+                    encoding = Encoding.Unicode;
+                }
+                else
+                {
+                    encoding = Encoding.BigEndianUnicode;
+                }
+            }
+            else if (encoding == Encoding.UTF32 || encoding == new UTF32Encoding(true, true))
+            {
+                if (aByteOrder == ByteOrder.LittleEndian)
+                {
+                    encoding = Encoding.UTF32;
+                }
+                else
+                {
+                    encoding = new UTF32Encoding(true, true);
+                }
+            }
         }
         public void write(BinaryDataWriter bdw)
         {
