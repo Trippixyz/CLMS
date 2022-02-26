@@ -35,11 +35,7 @@ namespace CLMS
         {
             ConsoleColor colorBuf = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Green;
-            switch (header.fileType)
-            {
-                case FileType.MSBT: Console.WriteLine("MsgStdBn"); break;
-                case FileType.MSBP: Console.WriteLine("MsgPrjBn"); break;
-            }
+            Console.WriteLine(header.fileType.ToString());
             Console.WriteLine("ByteOrder: " + header.byteOrder.ToString());
             Console.WriteLine("Encoding: " + header.encoding.ToString().Replace("System.Text.", ""));
             Console.WriteLine("Version: " + header.versionNumber);
@@ -52,8 +48,9 @@ namespace CLMS
 
     public enum FileType
     {
-        MSBT,
-        MSBP
+        MSBT, // MsgStdBn (includes WMBT, since they share the same magic)
+        MSBP, // MsgPrjBn
+        WMBP  // WMsgPrjB
     }
     internal static class Shared
     {
@@ -141,6 +138,10 @@ namespace CLMS
 
         public static void alignPos(this BinaryDataReader bdr, int alignmentSize)
         {
+            if (alignmentSize <= 0)
+            {
+                return;
+            }
             long finalPos;
             for (finalPos = 0; finalPos < bdr.Position; finalPos += alignmentSize) { }
             bdr.Position = finalPos;
@@ -148,6 +149,10 @@ namespace CLMS
 
         public static void align(this BinaryDataWriter bdw, int alignmentSize, byte alignmentByte)
         {
+            if (alignmentSize <= 0)
+            {
+                return;
+            }
             long finalPos;
             for (finalPos = 0; finalPos < bdw.Position; finalPos += alignmentSize) { }
             while (bdw.Position < finalPos)
@@ -196,10 +201,12 @@ namespace CLMS
     public static class BinaryDataExt
     {
         /// <summary>
-        /// Flips the the ByteOrder.
+        /// Flips the ByteOrder.
         /// </summary>
         /// <param name="byteOrder"></param>
-        /// <returns></returns>
+        /// <returns>
+        /// Returns the opposite ByteOrder.
+        /// </returns>
         public static ByteOrder Flip(this ByteOrder byteOrder)
         {
             switch (byteOrder)
