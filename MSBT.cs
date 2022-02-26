@@ -14,7 +14,7 @@ namespace CLMS
         public ByteOrder ByteOrder
         {
             get { return header.byteOrder; }
-            set { header.changeEndianess(value); }
+            set { header.changeByteOrder(value); }
         }
         public Encoding MessageEncoding
         {
@@ -148,7 +148,7 @@ namespace CLMS
             return write();
         }
 
-        // getting stuff
+        #region Message getting
         public (string, Message)[] getPairs()
         {
             List<(string, Message)> pairList = new List<(string, Message)>();
@@ -259,11 +259,12 @@ namespace CLMS
                 throw;
             }
         }
+        #endregion
 
-        // setting stuff
+        #region Message editing
         public void AddMessage(string label, params object[] parameters)
         {
-            Messages.Add(label, Format(parameters));
+            Messages.Add(label, new(parameters));
         }
         public void AddMessage(string label, int styleIndex, params object[] parameters)
         {
@@ -271,7 +272,7 @@ namespace CLMS
             {
                 hasStyleIndices = true;
             }
-            Message message = Format(parameters);
+            Message message = new(parameters);
             message.styleIndex = styleIndex;
             Messages.Add(label, message);
         }
@@ -281,7 +282,7 @@ namespace CLMS
             {
                 hasStyleIndices = true;
             }
-            Message message = Format(parameters);
+            Message message = new(parameters);
             message.attribute = aAttribute;
             Messages.Add(label, message);
         }
@@ -291,7 +292,7 @@ namespace CLMS
             {
                 hasStyleIndices = true;
             }
-            Message message = Format(parameters);
+            Message message = new(parameters);
             message.styleIndex = styleIndex;
             message.attribute = aAttribute;
             Messages.Add(label, message);
@@ -305,8 +306,9 @@ namespace CLMS
         {
             Messages.Remove(Messages.Keys.ToArray()[index]);
         }
+        #endregion
 
-        // misc
+        #region misc
 
         // temporary (planned to get replaced by another system)
         public void setATO1(byte[] value)
@@ -321,6 +323,7 @@ namespace CLMS
         {
             hasATO1 = false;
         }
+        #endregion
 
         // init
         #region reading code
@@ -333,12 +336,16 @@ namespace CLMS
             bool isTXT2 = false;
             bool isNLI1 = false;
 
+            #region buffers
+
             // buffers
             string[] labelBuf = new string[0];
             Dictionary<uint, uint> numLineBuf = new Dictionary<uint, uint>();
             Attribute[] attributeBuf = new Attribute[0];
             int[] styleIndexesBuf = new int[0];
             Message[] messageBuf = new Message[0];
+
+            #endregion
 
             header = new(new(stm));
             BinaryDataReader bdr = new(stm, header.encoding);

@@ -16,7 +16,7 @@ namespace CLMS
         public ByteOrder ByteOrder
         {
             get { return header.byteOrder; }
-            set { header.changeEndianess(value); }
+            set { header.changeByteOrder(value); }
         }
         public Encoding MessageEncoding
         {
@@ -91,7 +91,7 @@ namespace CLMS
             return write();
         }
 
-        // getting stuff
+        #region TagControl getting
         public TagConfig getTagConfigByControlTag(string tagGroup, string tagType)
         {
             for (ushort group = 0; group < ControlTags.Count; group++)
@@ -160,6 +160,7 @@ namespace CLMS
             }
             return null;
         }
+        #endregion
 
         // init
         #region reading code
