@@ -520,9 +520,9 @@ namespace CLMS
 
             for (uint i = 0; i < languagesNum; i++)
             {
-                uint cSourceFileOffset = bdr.ReadUInt32();
+                uint cLanguageOffset = bdr.ReadUInt32();
                 long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cSourceFileOffset;
+                bdr.Position = startPosition + cLanguageOffset;
 
                 ushort cLanguageIndex = bdr.ReadUInt16();
                 byte cLanguageUnk0 = bdr.ReadByte();
@@ -538,12 +538,60 @@ namespace CLMS
 
             return languages;
         }
-        public static void getWSYL(BinaryDataReader bdr)
+        public static LanguageStyle[][] getWSYL(BinaryDataReader bdr, int numberOfLanguages)
         {
             long startPosition = bdr.Position;
-            uint languagesNum = bdr.ReadUInt32();
+            uint languageStylesNum = bdr.ReadUInt32();
             bdr.alignPos(0x10);
-            Language[] languages = new Language[languagesNum];
+            LanguageStyle[][] languageStyles = new LanguageStyle[numberOfLanguages][];
+
+            for (uint i = 0; i < numberOfLanguages; i++)
+            {
+                languageStyles[i] = new LanguageStyle[languageStylesNum];
+            }
+
+            for (uint i = 0; i < languageStylesNum; i++)
+            {
+                uint cLanguageStyleOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+                bdr.Position = startPosition + cLanguageStyleOffset;
+
+                for (uint j = 0; j < numberOfLanguages; j++)
+                {
+                    languageStyles[j][i] = new(bdr.ReadBytes(0x40));
+                }
+
+                bdr.Position = positionBuf;
+            }
+
+            return languageStyles;
+        }
+        public static Font[] getWFNT(BinaryDataReader bdr)
+        {
+            long startPosition = bdr.Position;
+            uint fontsNum = bdr.ReadUInt32();
+            bdr.alignPos(0x10);
+            Font[] fonts = new Font[fontsNum];
+
+            for (uint i = 0; i < fontsNum; i++)
+            {
+                uint cFontOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+                bdr.Position = startPosition + cFontOffset;
+
+                ushort cLanguageIndex = bdr.ReadUInt16();
+                byte cLanguageUnk0 = bdr.ReadByte();
+                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+
+                bdr.skipByte();
+                bdr.alignPos(0x10);
+
+                fonts[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
+
+                bdr.Position = positionBuf;
+            }
+
+            return fonts;
         }
         #endregion
 
@@ -949,13 +997,31 @@ namespace CLMS
     {
         public string Name;
         public byte unk0;
+        public LanguageStyle[] languageStyles;
         public Language(string aName, byte aUnk0)
         {
             Name = aName;
             unk0 = aUnk0;
         }
     }
-
+    public class LanguageStyle
+    {
+        public byte[] binary;
+        public LanguageStyle(byte[] aBinary)
+        {
+            binary = aBinary;
+        }
+    }
+    public class Font
+    {
+        public string Name;
+        public byte unk0;
+        public Font(string aName, byte aUnk0)
+        {
+            Name = aName;
+            unk0 = aUnk0;
+        }
+    }
     internal class Header
     {
         public FileType fileType;

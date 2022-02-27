@@ -40,6 +40,7 @@ namespace CLMS
 
         // specific
         public List<Language> Languages = new List<Language>();
+        public List<Font> Fonts = new List<Font>();
 
         #region private
 
@@ -84,10 +85,10 @@ namespace CLMS
             Stream stm = new MemoryStream(data.ToArray());
             read(stm);
         }
-        public byte[] Save()
-        {
-            return write();
-        }
+        //public byte[] Save()
+        //{
+        //    return write();
+        //}
 
         #region reading code
         private void read(Stream stm)
@@ -100,6 +101,12 @@ namespace CLMS
 
             // language
             Language[] languageBuf = new Language[0];
+
+            // language style
+            LanguageStyle[][] languageStyleBuf = new LanguageStyle[0][];
+
+            // font
+            Font[] fontBuf = new Font[0];
 
             #endregion
 
@@ -125,12 +132,12 @@ namespace CLMS
                     case "WSYL":
                         isWSYL = true;
 
-
+                        languageStyleBuf = getWSYL(bdr, languageBuf.Length);
                         break;
                     case "WFNT":
                         isWFNT = true;
 
-
+                        fontBuf = getWFNT(bdr);
                         break;
 
                 }
@@ -141,9 +148,18 @@ namespace CLMS
 
             // beginning of parsing buffers into class items
 
-            if (isWLNG)
+            if (isWLNG && isWSYL)
             {
+                for (int i = 0; i < languageBuf.Length; i++)
+                {
+                    languageBuf[i].languageStyles = languageStyleBuf[i];
+                }
                 Languages = languageBuf.ToList();
+            }
+
+            if (isWFNT)
+            {
+                Fonts = fontBuf.ToList();
             }
         }
         #endregion
