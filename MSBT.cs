@@ -155,7 +155,7 @@ namespace CLMS
 
             for (int i = 0; i < Messages.Count; i++)
             {
-                pairList.Add((Messages.Keys.ToArray()[i], Messages[Messages.Keys.ToArray()[i]]));
+                pairList.Add((Messages.Keys.ToArray()[i], Messages.Values.ToArray()[i]));
             }
 
             return pairList.ToArray();
