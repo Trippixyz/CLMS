@@ -203,7 +203,7 @@ namespace CLMS
             List<Message> messagesList = new List<Message>();
             for (uint i = 0; i < stringNum; i++)
             {
-                Message cMessage = new Message();
+                Message cMessage = new();
                 if (isTSY1)
                 {
                     cMessage.styleIndex = styleIndices[i];
@@ -226,19 +226,18 @@ namespace CLMS
                     char cChar = bdr.ReadChar();
                     if (cChar == 0x0E)
                     {
-                        Tag cTag = new Tag(bdr.ReadUInt16(), bdr.ReadUInt16(), j);
+                        Tag cTag = new(bdr.ReadUInt16(), bdr.ReadUInt16());
                         ushort cTagSize = bdr.ReadUInt16();
-                        //Console.WriteLine("Pos: " + bdr.Position + "\nTagGroup: " + cTagGroup + "\nTagType: " + cTagType + "\nTagSize: " + cTagSize);
 
                         cTag.parameters = bdr.ReadBytes(cTagSize);
 
-                        cMessage.tags.Add(cTag);
+                        cMessage.tags.Add((j, cTag));
                     }
                     else if (cChar == 0x0F) // attempt to implement region tags
                     {
-                        cMessage.tags[cMessage.tags.Count - 1].hasRegionEnd = true;
-                        cMessage.tags[cMessage.tags.Count - 1].regionSize = j - cMessage.tags[cMessage.tags.Count - 1].Index;
-                        cMessage.tags[cMessage.tags.Count - 1].regionEndMarkerBytes = bdr.ReadBytes(4);
+                        cMessage.tags[cMessage.tags.Count - 1].Tag.hasRegionEnd = true;
+                        cMessage.tags[cMessage.tags.Count - 1].Tag.regionSize = j - cMessage.tags[cMessage.tags.Count - 1].Index;
+                        cMessage.tags[cMessage.tags.Count - 1].Tag.regionEndMarkerBytes = bdr.ReadBytes(4);
 
                         //Console.WriteLine("0x0F:");
                         //Console.WriteLine("Region Size: " + cMessage.tags[cMessage.tags.Count - 1].regionSize);
@@ -255,6 +254,7 @@ namespace CLMS
                     }
                 }
                 cMessage.rawString = stringBuf;
+
                 messagesList.Add(cMessage);
                 bdr.Position = positionBuf;
             }
@@ -682,7 +682,7 @@ namespace CLMS
         /// <summary>
         /// A list of all tags throughout the message. 
         /// </summary>
-        public List<Tag> tags = new List<Tag>();
+        public List<(uint Index, Tag Tag)> tags = new List<(uint Index, Tag Tag)>();
         /// <summary>
         /// The style index into the style table (usually found in the msbp). 
         /// To check if the msbt has style indices get the "hasStyleIndices" bool from the msbt class header.
@@ -693,7 +693,7 @@ namespace CLMS
         /// To check if the msbt has a attribute has attributes get the "hasAttributes" bool from the msbt class header.
         /// </summary>
         public Attribute attribute;
-        
+
         public Message(params object[] parameters)
         {
             foreach (object parameter in parameters)
@@ -705,8 +705,7 @@ namespace CLMS
                 else if (parameter is Tag)
                 {
                     Tag tag = (Tag)parameter;
-                    tag.Index = (uint)rawString.Length;
-                    tags.Add(tag);
+                    tags.Add(((uint)rawString.Length, tag));
                 }
             }
         }
@@ -717,12 +716,12 @@ namespace CLMS
         /// <returns></returns>
         public string[] SplitByTags()
         {
-            List<uint> indexes = new List<uint>();
-            foreach (Tag cTag in tags)
+            List<uint> indices = new List<uint>();
+            foreach ((uint Index, Tag Tag) in tags)
             {
-                indexes.Add(cTag.Index);
+                indices.Add(Index);
             }
-            return rawString.SplitAt(indexes.ToArray());
+            return rawString.SplitAt(indices.ToArray());
         }
         /// <summary>
         /// Splits the 'rawString' by a specific tagConfig.
@@ -731,15 +730,15 @@ namespace CLMS
         /// <returns></returns>
         public string[] SplitByTag(TagConfig tagConfig)
         {
-            List<uint> indexes = new List<uint>();
-            foreach (Tag cTag in tags)
+            List<uint> indices = new List<uint>();
+            foreach ((uint Index, Tag Tag) in tags)
             {
-                if (tagConfig.CompareWithTag(cTag))
+                if (tagConfig.CompareWithTag(Tag))
                 {
-                    indexes.Add(cTag.Index);
+                    indices.Add(Index);
                 }
             }
-            return rawString.SplitAt(indexes.ToArray());
+            return rawString.SplitAt(indices.ToArray());
         }
         /// <summary>
         /// Converts the Message object to 'params object[]'.
@@ -752,10 +751,10 @@ namespace CLMS
             uint cMessagePosition = 0;
             for (int i = 0; i < tags.Count; i++)
             {
-                Tag cTag = tags[i];
-                string cMessageSubString = rawString.Substring((int)(cMessagePosition), (int)(cTag.Index - cMessagePosition));
+                (uint cIndex, Tag cTag) = tags[i];
+                string cMessageSubString = rawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
 
-                cMessagePosition = cTag.Index;
+                cMessagePosition = cIndex;
 
                 if (cMessageSubString.Length > 0)
                 {
@@ -766,7 +765,7 @@ namespace CLMS
             }
 
             // if the last tag isnt the actual end of the message (which is common)
-            string LastPartOfMessage = rawString.Substring((int)(cMessagePosition));
+            string LastPartOfMessage = rawString.Substring((int)cMessagePosition);
 
             if (LastPartOfMessage.Length > 0)
             {
@@ -812,10 +811,7 @@ namespace CLMS
         /// The type of a tag within the group.
         /// </summary>
         public ushort type;
-        /// <summary>
-        /// The index of the tag into the message string.
-        /// </summary>
-        public uint Index;
+
         /// <summary>
         /// The parameters of the tag as a raw byte[].
         /// </summary>
@@ -834,13 +830,6 @@ namespace CLMS
         /// </summary>
         public byte[] regionEndMarkerBytes;
 
-        public Tag(ushort aTagGroup, ushort aTagType, uint aIndex)
-        {
-            group = aTagGroup;
-            type = aTagType;
-            Index = aIndex;
-            hasRegionEnd = false;
-        }
         public Tag(ushort aGroup, ushort aType)
         {
             group = aGroup;
@@ -894,6 +883,7 @@ namespace CLMS
         /// The type of the attribute. Needs to be 9 to make use of the list.
         /// </summary>
         public byte type { get; private set; }
+
         public AttributeInfo(byte aType, uint aOffset)
         {
             setType(aType);
@@ -943,6 +933,7 @@ namespace CLMS
         /// The type of the tag parameter. Needs to be 9 to make use of the list.
         /// </summary>
         public byte type { get; private set; }
+
         public ControlTagParameter(byte aType)
         {
             setType(aType);
@@ -983,6 +974,7 @@ namespace CLMS
         /// The base color index of a style. The location of the base colors is unknown.
         /// </summary>
         public int BaseColorIndex;
+
         public Style(int aRegionWidth, int aLineNumber, int aFontIndex, int aBaseColorIndex)
         {
             RegionWidth = aRegionWidth;
@@ -1007,6 +999,7 @@ namespace CLMS
     public class LanguageStyle
     {
         public byte[] binary;
+
         public LanguageStyle(byte[] aBinary)
         {
             binary = aBinary;
@@ -1016,12 +1009,15 @@ namespace CLMS
     {
         public string Name;
         public byte unk0;
+
         public Font(string aName, byte aUnk0)
         {
             Name = aName;
             unk0 = aUnk0;
         }
     }
+
+    //shared
     internal class Header
     {
         public FileType fileType;
@@ -1030,6 +1026,7 @@ namespace CLMS
         public byte versionNumber;
         public ushort numberOfSections;
         public uint fileSize;
+
         public Header()
         {
 

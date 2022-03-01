@@ -627,10 +627,10 @@ namespace CLMS
                 uint cMessagePosition = 0;
                 for (int j = 0; j < messages[i].tags.Count; j++)
                 {
-                    Tag cTag = messages[i].tags[j];
-                    string cMessageSubString = messages[i].rawString.Substring((int)cMessagePosition, (int)(cTag.Index - cMessagePosition));
+                    (uint cIndex, Tag cTag) = messages[i].tags[j];
+                    string cMessageSubString = messages[i].rawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
 
-                    cMessagePosition = cTag.Index;
+                    cMessagePosition = cIndex;
 
                     bdw.Write(cMessageSubString, BinaryStringFormat.NoPrefixOrTermination);
 
