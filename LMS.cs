@@ -696,6 +696,16 @@ namespace CLMS
 
         public Message(params object[] parameters)
         {
+            Edit(parameters);
+        }
+        /// <summary>
+        /// Cleans the rawString and the tags and sets them through the parameters.
+        /// </summary>
+        /// <param name="parameters"></param>
+        public void Edit(params object[] parameters)
+        {
+            tags.Clear();
+            rawString = string.Empty;
             foreach (object parameter in parameters)
             {
                 if (parameter is string)
@@ -709,7 +719,6 @@ namespace CLMS
                 }
             }
         }
-
         /// <summary>
         /// Splits the 'rawString' by the tags in between it.
         /// </summary>
