@@ -114,7 +114,7 @@ namespace CLMS
 
         #endregion
 
-        public MSBT(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader)
+        public MSBT(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true)
         {
             header = new Header();
             if (createDefaultHeader)

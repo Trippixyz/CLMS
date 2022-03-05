@@ -56,7 +56,7 @@ namespace CLMS
 
         #endregion
 
-        public WMBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader)
+        public WMBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true)
         {
             header = new Header();
             if (createDefaultHeader)

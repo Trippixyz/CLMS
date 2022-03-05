@@ -58,7 +58,7 @@ namespace CLMS
 
         #endregion;
 
-        public MSBP(ByteOrder aByteOrder, bool createDefaultHeader)
+        public MSBP(ByteOrder aByteOrder, bool createDefaultHeader = true)
         {
             header = new Header();
             if (createDefaultHeader)
