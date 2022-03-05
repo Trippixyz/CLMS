@@ -125,7 +125,6 @@ namespace CLMS
                             return new(group, type);
                         }
                     }
-                    throw new Exception("TagType does not exist: " + tagType);
                 }
             }
             throw new Exception("TagGroup does not exist: " + tagGroup);
@@ -134,16 +133,15 @@ namespace CLMS
         {
             foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in ControlTags)
             {
-                for (ushort i = 0; i < cControlTagGroup.TagGroup.ControlTagTypes.Count; i++)
+                for (ushort j = 0; j < cControlTagGroup.TagGroup.ControlTagTypes.Count; j++)
                 {
-                    if (aTagConfig.group == cControlTagGroup.Index && aTagConfig.type == i)
+                    if (aTagConfig.group == cControlTagGroup.Index && aTagConfig.type == j)
                     {
-                        return new string[] { cControlTagGroup.Name, cControlTagGroup.TagGroup.ControlTagTypes[i].Name };
+                        return new string[] { cControlTagGroup.Name, cControlTagGroup.TagGroup.ControlTagTypes[j].Name };
                     }
                 }
-                throw new Exception("ControlTag does not exist: " + aTagConfig.group + " - " + aTagConfig.type);
             }
-            return null;
+            throw new Exception("ControlTag does not exist: " + aTagConfig.group + " - " + aTagConfig.type);
         }
         public string[] getControlTagByTag(Tag aTag)
         {
