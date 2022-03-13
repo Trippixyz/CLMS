@@ -100,34 +100,18 @@ namespace CLMS
                 {
                     for (ushort type = 0; type < ControlTags[group].TagGroup.ControlTagTypes.Count; type++)
                     {
-                        Console.WriteLine(ControlTags[group].TagGroup.ControlTagTypes[type].Name);
                         if (ControlTags[group].TagGroup.ControlTagTypes[type].Name == tagType)
                         {
                             return new(group, type);
                         }
                     }
-                    throw new Exception("TagType does not exist: " + tagType);
                 }
             }
             throw new Exception("TagGroup does not exist: " + tagGroup);
         }
         public Tag getTagByControlTag(string tagGroup, string tagType)
         {
-            for (ushort group = 0; group < ControlTags.Count; group++)
-            {
-                if (ControlTags[group].Name == tagGroup)
-                {
-                    for (ushort type = 0; type < ControlTags[group].TagGroup.ControlTagTypes.Count; type++)
-                    {
-                        Console.WriteLine(ControlTags[group].TagGroup.ControlTagTypes[type].Name);
-                        if (ControlTags[group].TagGroup.ControlTagTypes[type].Name == tagType)
-                        {
-                            return new(group, type);
-                        }
-                    }
-                }
-            }
-            throw new Exception("TagGroup does not exist: " + tagGroup);
+            return new(getTagConfigByControlTag(tagGroup, tagType));
         }
         public string[] getControlTagByTagConfig(TagConfig aTagConfig)
         {
@@ -145,18 +129,22 @@ namespace CLMS
         }
         public string[] getControlTagByTag(Tag aTag)
         {
+            return getControlTagByTagConfig(new(aTag));
+        }
+
+        public bool ContainsControlTag(TagConfig aTagConfig)
+        {
             foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in ControlTags)
             {
-                for (ushort i = 0; i < cControlTagGroup.TagGroup.ControlTagTypes.Count; i++)
+                for (ushort j = 0; j < cControlTagGroup.TagGroup.ControlTagTypes.Count; j++)
                 {
-                    if (aTag.group == cControlTagGroup.Index && aTag.type == i)
+                    if (aTagConfig.group == cControlTagGroup.Index && aTagConfig.type == j)
                     {
-                        return new string[] { cControlTagGroup.Name, cControlTagGroup.TagGroup.ControlTagTypes[i].Name };
+                        return true;
                     }
                 }
-                throw new Exception("ControlTag does not exist: " + aTag.group + " - " + aTag.type);
             }
-            return null;
+            return false;
         }
         #endregion
 

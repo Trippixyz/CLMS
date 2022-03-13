@@ -839,6 +839,11 @@ namespace CLMS
         /// </summary>
         public byte[] regionEndMarkerBytes;
 
+        public Tag(TagConfig aTagConfig)
+        {
+            group = aTagConfig.group;
+            type = aTagConfig.type;
+        }
         public Tag(ushort aGroup, ushort aType)
         {
             group = aGroup;
