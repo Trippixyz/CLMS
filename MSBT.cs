@@ -1,5 +1,6 @@
 ﻿using Syroot.BinaryData;
 using System.Collections.Generic;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -8,20 +9,15 @@ using static CLMS.Shared;
 
 namespace CLMS
 {
-    public class MSBT
+    public class MSBT : LMSBase
     {
         // general
-        public ByteOrder ByteOrder
-        {
-            get { return header.byteOrder; }
-            set { header.changeByteOrder(value); }
-        }
         public Encoding MessageEncoding
         {
-            get { return header.encoding; }
+            get { return Header.Encoding; }
             set
             {
-                header.encoding = value;
+                Header.Encoding = value;
                 byte[] preamble = value.GetPreamble();
                 switch (preamble[0])
                 {
@@ -38,15 +34,16 @@ namespace CLMS
         }
 
         // specific
+        public Message this[string key] { get => Messages[key]; set => Messages[key] = value; }
         public Dictionary<string, Message> Messages = new Dictionary<string, Message>();
 
         // misc
-        public bool usesMessageID
+        public bool UsesMessageID
         {
             set
             {
-                hasNLI1 = value;
-                hasLBL1 = !value;
+                HasNLI1 = value;
+                HasLBL1 = !value;
                 if (value)
                 {
                     bool areKeysParsable = true;
@@ -61,11 +58,11 @@ namespace CLMS
                     }
                     if (areKeysParsable)
                     {
-                        usesMessageID = value;
+                        UsesMessageID = value;
                     }
                     else
                     {
-                        (string key, Message message)[] pairs = getPairs();
+                        (string key, Message message)[] pairs = GetPairs();
                         Messages.Clear();
                         uint cMessageID = 0;
                         foreach ((string key, Message message) in pairs)
@@ -76,80 +73,56 @@ namespace CLMS
                 }
             }
         }
-        public bool isWMBT = false;
-        public bool hasAttributes
+        public bool IsWMBT = false;
+        public bool HasAttributes
         {
             get
             {
-                return hasATR1;
+                return HasATR1;
             }
             set
             {
-                hasATR1 = value;
+                HasATR1 = value;
             }
         }
-        public bool hasStyleIndices
+        public bool HasStyleIndices
         {
             get
             {
-                return hasTSY1;
+                return HasTSY1;
             }
             set
             {
-                hasTSY1 = value;
+                HasTSY1 = value;
             }
         }
 
         #region private
 
-        Header header;
-        private bool hasLBL1;
-        private bool hasNLI1;
-        private bool hasATO1;
-        private bool hasATR1;
-        private bool hasTSY1;
+        private bool HasLBL1;
+        private bool HasNLI1;
+        private bool HasATO1;
+        private bool HasATR1;
+        private bool HasTSY1;
 
         // temporary until ATO1 has been reversed
         private byte[] ATO1Content;
 
         #endregion
 
-        public MSBT(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true)
+        public MSBT() : base() { }
+        public MSBT(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader) { }
+        public MSBT(Stream stm, bool keepOffset = true) : base(stm, keepOffset) { }
+        public MSBT(byte[] data) : base(data) { }
+        public MSBT(List<byte> data) : base(data) { }
+
+        public override byte[] Save()
         {
-            header = new Header();
-            if (createDefaultHeader)
-            {
-                header.fileType = FileType.MSBT;
-                header.versionNumber = 3;
-            }
-            ByteOrder = aByteOrder;
-            MessageEncoding = aEncoding;
-        }
-        public MSBT(Stream stm, bool keepOffset)
-        {
-            if (!keepOffset)
-            {
-                stm.Position = 0;
-            }
-            read(stm);
-        }
-        public MSBT(byte[] data)
-        {
-            Stream stm = new MemoryStream(data);
-            read(stm);
-        }
-        public MSBT(List<byte> data)
-        {
-            Stream stm = new MemoryStream(data.ToArray());
-            read(stm);
-        }
-        public byte[] Save()
-        {
-            return write();
+            return Write();
         }
 
         #region Message getting
-        public (string, Message)[] getPairs()
+        public (string, Message)[] GetPairs()
         {
             List<(string, Message)> pairList = new List<(string, Message)>();
 
@@ -160,7 +133,7 @@ namespace CLMS
 
             return pairList.ToArray();
         }
-        public Message tryGetMessageByKey(string key)
+        public Message TryGetMessageByKey(string key)
         {
             try
             {
@@ -171,7 +144,7 @@ namespace CLMS
                 throw;
             }
         }
-        public Message[] tryGetMessagesByPartiallyMatchingKey(string key)
+        public Message[] TryGetMessagesByPartiallyMatchingKey(string key)
         {
             try
             {
@@ -191,35 +164,35 @@ namespace CLMS
                 throw;
             }
         }
-        public Message getMessageByIndex(int index)
+        public Message GetMessageByIndex(int index)
         {
             return Messages[Messages.Keys.ToArray()[index]];
         }
-        public (string, Message) getPairByIndex(int index)
+        public (string, Message) GetPairByIndex(int index)
         {
             string key = Messages.Keys.ToArray()[index];
             return (key, Messages[key]);
         }
-        public long tryGetTagCountOfMessageByKey(string key)
+        public long TryGetTagCountOfMessageByKey(string key)
         {
             try
             {
-                return Messages[key].tags.Count;
+                return Messages[key].Tags.Count;
             }
             catch
             {
                 throw;
             }
         }
-        public string[] getKeys()
+        public string[] GetKeys()
         {
             return Messages.Keys.ToArray();
         }
-        public string getKeyByIndex(int index)
+        public string GetKeyByIndex(int index)
         {
             return Messages.Keys.ToArray()[index];
         }
-        public string[] tryGetKeysByMessageString(string messageString)
+        public string[] TryGetKeysByMessageString(string messageString)
         {
             try
             {
@@ -227,7 +200,7 @@ namespace CLMS
                 List<string> resultList = new List<string>();
                 for (int i = 0; i < Messages.Count; i++)
                 {
-                    if (Messages[keys[i]].rawString == messageString)
+                    if (Messages[keys[i]].RawString == messageString)
                     {
                         resultList.Add(keys[i]);
                     }
@@ -239,7 +212,7 @@ namespace CLMS
                 throw;
             }
         }
-        public string[] tryGetKeysByPartiallyMatchingMessageString(string messageString)
+        public string[] TryGetKeysByPartiallyMatchingMessageString(string messageString)
         {
             try
             {
@@ -247,7 +220,7 @@ namespace CLMS
                 List<string> resultList = new List<string>();
                 for (int i = 0; i < Messages.Count; i++)
                 {
-                    if (Messages[keys[i]].rawString.Contains(messageString))
+                    if (Messages[keys[i]].RawString.Contains(messageString))
                     {
                         resultList.Add(keys[i]);
                     }
@@ -268,33 +241,33 @@ namespace CLMS
         }
         public void AddMessage(string label, int styleIndex, params object[] parameters)
         {
-            if (!hasStyleIndices)
+            if (!HasStyleIndices)
             {
-                hasStyleIndices = true;
+                HasStyleIndices = true;
             }
             Message message = new(parameters);
-            message.styleIndex = styleIndex;
+            message.StyleIndex = styleIndex;
             Messages.Add(label, message);
         }
         public void AddMessage(string label, Attribute aAttribute, params object[] parameters)
         {
-            if (!hasStyleIndices)
+            if (!HasStyleIndices)
             {
-                hasStyleIndices = true;
+                HasStyleIndices = true;
             }
             Message message = new(parameters);
-            message.attribute = aAttribute;
+            message.Attribute = aAttribute;
             Messages.Add(label, message);
         }
         public void AddMessage(string label, int styleIndex, Attribute aAttribute, params object[] parameters)
         {
-            if (!hasStyleIndices)
+            if (!HasStyleIndices)
             {
-                hasStyleIndices = true;
+                HasStyleIndices = true;
             }
             Message message = new(parameters);
-            message.styleIndex = styleIndex;
-            message.attribute = aAttribute;
+            message.StyleIndex = styleIndex;
+            message.Attribute = aAttribute;
             Messages.Add(label, message);
         }
 
@@ -311,30 +284,36 @@ namespace CLMS
         #region misc
 
         // temporary (planned to get replaced by another system)
-        public void setATO1(byte[] value)
+        public void SetATO1(byte[] value)
         {
             ATO1Content = value;
-            if (!hasATO1)
+            if (!HasATO1)
             {
-                hasATO1 = true;
+                HasATO1 = true;
             }
         }
-        public void removeATO1()
+        public void RemoveATO1()
         {
-            hasATO1 = false;
+            HasATO1 = false;
         }
         #endregion
 
         // init
         #region reading code
-        private void read(Stream stm)
+        protected override void Read(Stream stm)
         {
+            var bdr = CreateReadEnvironment(stm);
+
+            #region checkers
+
             bool isLBL1 = false;
             bool isATO1 = false;
             bool isATR1 = false;
             bool isTSY1 = false;
             bool isTXT2 = false;
             bool isNLI1 = false;
+
+            #endregion
 
             #region buffers
 
@@ -347,68 +326,63 @@ namespace CLMS
 
             #endregion
 
-            header = new(new(stm));
-            BinaryDataReader bdr = new(stm, header.encoding);
-
-            bdr.ByteOrder = header.byteOrder;
-
-            for (int i = 0; (i < header.numberOfSections) || (i < header.numberOfSections); i++)
+            for (int i = 0; (i < Header.NumberOfSections) || (i < Header.NumberOfSections); i++)
             {
                 if (bdr.EndOfStream)
                     continue;
 
                 string cSectionMagic = bdr.ReadASCIIString(4);
                 uint cSectionSize = bdr.ReadUInt32();
-                bdr.skipBytes(8);
+                bdr.SkipBytes(8);
                 long cPositionBuf = bdr.Position;
                 switch (cSectionMagic)
                 {
                     case "LBL1":
                         isLBL1 = true;
 
-                        hasLBL1 = true;
-                        labelBuf = getLabels(bdr);
+                        HasLBL1 = true;
+                        labelBuf = GetLabels(bdr);
                         break;
                     case "NLI1":
                         isNLI1 = true;
 
-                        hasNLI1 = true;
-                        numLineBuf = getNumLines(bdr);
+                        HasNLI1 = true;
+                        numLineBuf = GetNumLines(bdr);
                         break;
                     case "ATO1":
                         isATO1 = true;
 
-                        hasATO1 = true;
+                        HasATO1 = true;
                         ATO1Content = bdr.ReadBytes((int)cSectionSize);
                         break;
                     case "ATR1":
                         isATR1 = true;
 
-                        hasATR1 = true;
-                        attributeBuf = getAttributes(bdr, cSectionSize);
+                        HasATR1 = true;
+                        attributeBuf = GetAttributes(bdr, cSectionSize);
                         break;
                     case "TSY1":
                         isTSY1 = true;
 
-                        hasTSY1 = true;
-                        styleIndexesBuf = getStyleIndices(bdr, cSectionSize / 4);
+                        HasTSY1 = true;
+                        styleIndexesBuf = GetStyleIndices(bdr, cSectionSize / 4);
                         break;
                     case "TXT2":
                         isTXT2 = true;
 
-                        messageBuf = getStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
+                        messageBuf = GetStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
                         break;
                     case "TXTW": // if its a WMBT (basically a MSBT but for WarioWare(?))
                         isTXT2 = true;
 
                         i++;
-                        isWMBT = true;
-                        messageBuf = getStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
+                        IsWMBT = true;
+                        messageBuf = GetStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
                         break;
                 }
                 bdr.Position = cPositionBuf;
-                bdr.skipBytes(cSectionSize);
-                bdr.alignPos(0x10);
+                bdr.SkipBytes(cSectionSize);
+                bdr.AlignPos(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -461,74 +435,76 @@ namespace CLMS
 
 
         #region parsing code
-        private byte[] write()
+        protected override byte[] Write()
         {
-            Stream stm = new MemoryStream();
-            BinaryDataWriter bdw = new(stm, header.encoding);
-            ushort sectionNumber = 0;
+            (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
 
-            header.write(bdw);
-
-            if (hasLBL1)
+            if (HasLBL1)
             {
-                writeLBL1(bdw, Messages.Keys.ToArray(), true);
-                bdw.align(0x10, 0xAB);
+                WriteLBL1(bdw, Messages.Keys.ToArray(), true);
+                bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            if (hasNLI1)
+            else if (HasNLI1)
             {
-                writeNLI1(bdw, Messages.Keys.ToArray(), Messages.Values.ToArray());
-                bdw.align(0x10, 0xAB);
+                WriteNLI1(bdw, Messages.Keys.ToArray(), Messages.Values.ToArray());
+                bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            if (hasATO1)
+            else // writes the LBL1 section by default
             {
-                writeATO1(bdw, ATO1Content);
-                bdw.align(0x10, 0xAB);
+                WriteLBL1(bdw, Messages.Keys.ToArray(), true);
+                bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            if (hasATR1)
+            if (HasATO1)
             {
-                writeATR1(bdw, Messages.Values.ToArray());
-                bdw.align(0x10, 0xAB);
+                WriteATO1(bdw, ATO1Content);
+                bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            if (hasTSY1)
+            if (HasATR1)
+            {
+                WriteATR1(bdw, Messages.Values.ToArray());
+                bdw.Align(0x10, 0xAB);
+                sectionNumber++;
+            }
+            if (HasTSY1)
             {
                 int[] styleIndexes = new int[Messages.Count];
                 for (uint i = 0; i < Messages.Count; i++)
                 {
-                    styleIndexes[i] = Messages[Messages.Keys.ToArray()[i]].styleIndex;
+                    styleIndexes[i] = Messages[Messages.Keys.ToArray()[i]].StyleIndex;
                 }
-                writeTSY1(bdw, styleIndexes);
-                bdw.align(0x10, 0xAB);
+                WriteTSY1(bdw, styleIndexes);
+                bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            writeTXT2(bdw, Messages.Values.ToArray(), isWMBT);
-            bdw.align(0x10, 0xAB);
+            WriteTXT2(bdw, Messages.Values.ToArray(), IsWMBT);
+            bdw.Align(0x10, 0xAB);
 
             sectionNumber++;
 
-            if (isWMBT)
+            if (IsWMBT)
             {
                 sectionNumber++;
             }
 
-            header.overwriteStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
+            Header.OverwriteStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
 
             return ReadFully(stm);
         }
-        private void writeLBL1(BinaryDataWriter bdw, string[] labels, bool optimize)
+        private void WriteLBL1(BinaryDataWriter bdw, string[] labels, bool optimize)
         {
-            long sectionSizePosBuf = writeSectionHeader(bdw, "LBL1");
+            long sectionSizePosBuf = WriteSectionHeader(bdw, "LBL1");
 
-            parseLabels(bdw, labels, optimize);
+            ParseLabels(bdw, labels, optimize);
 
-            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+            CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void writeNLI1(BinaryDataWriter bdw, string[] labels, Message[] messages)
+        private void WriteNLI1(BinaryDataWriter bdw, string[] labels, Message[] messages)
         {
-            long sectionSizePosBuf = writeSectionHeader(bdw, "NLI1");
+            long sectionSizePosBuf = WriteSectionHeader(bdw, "NLI1");
             bdw.Write((uint)messages.Length);
 
             for (int i = 0; i < messages.Length; i++)
@@ -538,19 +514,19 @@ namespace CLMS
                 bdw.Write(i);
             }
 
-            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+            CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void writeATO1(BinaryDataWriter bdw, byte[] binary)
+        private void WriteATO1(BinaryDataWriter bdw, byte[] binary)
         {
-            long sectionSizePosBuf = writeSectionHeader(bdw, "ATO1");
+            long sectionSizePosBuf = WriteSectionHeader(bdw, "ATO1");
 
             bdw.Write(binary);
 
-            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+            CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void writeATR1(BinaryDataWriter bdw, Message[] messages)
+        private void WriteATR1(BinaryDataWriter bdw, Message[] messages)
         {
-            long sectionSizePosBuf = writeSectionHeader(bdw, "ATR1");
+            long sectionSizePosBuf = WriteSectionHeader(bdw, "ATR1");
 
             long startPosition = bdw.Position;
             bdw.Write((uint)messages.Length);
@@ -561,7 +537,7 @@ namespace CLMS
             }
             else
             {
-                if (messages[0].attribute.data is string)
+                if (messages[0].Attribute.Data is string)
                 {
                     bdw.Write((uint)4);
                     long hashTablePosBuf = bdw.Position;
@@ -569,9 +545,9 @@ namespace CLMS
                     for (int i = 0; i < messages.Length; i++)
                     {
                         long cAttributeOffset = bdw.Position;
-                        bdw.goBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cAttributeOffset - startPosition));
+                        bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cAttributeOffset - startPosition));
 
-                        bdw.Write((string)messages[i].attribute.data, BinaryStringFormat.NoPrefixOrTermination);
+                        bdw.Write((string)messages[i].Attribute.Data, BinaryStringFormat.NoPrefixOrTermination);
 
                         // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                         bdw.WriteChar(0x00);
@@ -579,39 +555,39 @@ namespace CLMS
                 }
                 else
                 {
-                    byte[] firstData = (byte[])messages[0].attribute.data;
+                    byte[] firstData = (byte[])messages[0].Attribute.Data;
                     bdw.Write((uint)firstData.Length);
 
                     for (uint i = 0; i < messages.Length; i++)
                     {
-                        bdw.Write((byte[])messages[i].attribute.data);
+                        bdw.Write((byte[])messages[i].Attribute.Data);
                     }
                 }
             }
 
-            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+            CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void writeTSY1(BinaryDataWriter bdw, int[] indexes)
+        private void WriteTSY1(BinaryDataWriter bdw, int[] indexes)
         {
-            long sectionSizePosBuf = writeSectionHeader(bdw, "TSY1");
+            long sectionSizePosBuf = WriteSectionHeader(bdw, "TSY1");
 
             foreach (int cIndex in indexes)
             {
                 bdw.Write(cIndex);
             }
 
-            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+            CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void writeTXT2(BinaryDataWriter bdw, Message[] messages, bool isWMBT)
+        private void WriteTXT2(BinaryDataWriter bdw, Message[] messages, bool isWMBT)
         {
             long sectionSizePosBuf;
             if (!isWMBT)
             {
-                sectionSizePosBuf = writeSectionHeader(bdw, "TXT2");
+                sectionSizePosBuf = WriteSectionHeader(bdw, "TXT2");
             }
             else
             {
-                sectionSizePosBuf = writeSectionHeader(bdw, "TXTW");
+                sectionSizePosBuf = WriteSectionHeader(bdw, "TXTW");
             }
 
             long startPosition = bdw.Position;
@@ -622,38 +598,38 @@ namespace CLMS
             for (int i = 0; i < messages.Length; i++)
             {
                 long cMessageOffset = bdw.Position;
-                bdw.goBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cMessageOffset - startPosition));
+                bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cMessageOffset - startPosition));
 
                 uint cMessagePosition = 0;
-                for (int j = 0; j < messages[i].tags.Count; j++)
+                for (int j = 0; j < messages[i].Tags.Count; j++)
                 {
-                    (uint cIndex, Tag cTag) = messages[i].tags[j];
-                    string cMessageSubString = messages[i].rawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
+                    (uint cIndex, Tag cTag) = messages[i].Tags[j];
+                    string cMessageSubString = messages[i].RawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
 
                     cMessagePosition = cIndex;
 
                     bdw.Write(cMessageSubString, BinaryStringFormat.NoPrefixOrTermination);
 
                     bdw.WriteChar(0x0E);
-                    bdw.Write(cTag.group);
-                    bdw.Write(cTag.type);
-                    bdw.Write((ushort)cTag.parameters.Length);
-                    bdw.Write(cTag.parameters);
+                    bdw.Write(cTag.Group);
+                    bdw.Write(cTag.Type);
+                    bdw.Write((ushort)cTag.Parameters.Length);
+                    bdw.Write(cTag.Parameters);
 
                     // writing the region section if the tag has one
-                    if (cTag.hasRegionEnd)
+                    if (cTag.HasRegionEnd)
                     {
-                        string cTagRegionSubString = messages[i].rawString.Substring((int)cMessagePosition, (int)cTag.regionSize);
+                        string cTagRegionSubString = messages[i].RawString.Substring((int)cMessagePosition, (int)cTag.RegionSize);
 
-                        cMessagePosition += cTag.regionSize;
+                        cMessagePosition += cTag.RegionSize;
 
                         bdw.Write(cTagRegionSubString, BinaryStringFormat.NoPrefixOrTermination);
                         bdw.WriteChar(0x0F);
-                        bdw.Write(cTag.regionEndMarkerBytes);
+                        bdw.Write(cTag.RegionEndMarkerBytes);
                     }
                 }
                 // if the last tag isnt the actual end of the message (which is common)
-                string LastPartOfMessage = messages[i].rawString.Substring((int)(cMessagePosition));
+                string LastPartOfMessage = messages[i].RawString.Substring((int)(cMessagePosition));
 
                 bdw.Write(LastPartOfMessage, BinaryStringFormat.NoPrefixOrTermination);
 
@@ -661,7 +637,7 @@ namespace CLMS
                 bdw.WriteChar(0x00);
             }
 
-            calcAndSetSectionSize(bdw, sectionSizePosBuf);
+            CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
         #endregion
     }

@@ -9,93 +9,36 @@ using System;
 
 namespace CLMS
 {
-    public class WMBP
+    public class WMBP : LMSBase
     {
-        // general
-        public ByteOrder ByteOrder
-        {
-            get { return header.byteOrder; }
-            set { header.changeByteOrder(value); }
-        }
-        public Encoding MessageEncoding
-        {
-            get { return header.encoding; }
-            set
-            {
-                header.encoding = value;
-                byte[] preamble = value.GetPreamble();
-                switch (preamble[0])
-                {
-                    case 0xFF:
-                        ByteOrder = ByteOrder.LittleEndian;
-                        break;
-
-                    case 0x00:
-                    case 0xFE:
-                        ByteOrder = ByteOrder.BigEndian;
-                        break;
-                }
-            }
-        }
-
         // specific
         public List<Language> Languages = new List<Language>();
         public List<Font> Fonts = new List<Font>();
 
-        #region private
+        public WMBP() : base() { }
+        public WMBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader) { }
+        public WMBP(Stream stm, bool keepOffset = true) : base(stm, keepOffset) { }
+        public WMBP(byte[] data) : base(data) { }
+        public WMBP(List<byte> data) : base(data) { }
 
-        Header header;
-        private bool hasLBL1;
-        private bool hasNLI1;
-        private bool hasATO1;
-        private bool hasATR1;
-        private bool hasTSY1;
-
-        // temporary until ATO1 has been reversed
-        private byte[] ATO1Content;
-
-        #endregion
-
-        public WMBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true)
+        // Not yet implemented
+        public override byte[] Save()
         {
-            header = new Header();
-            if (createDefaultHeader)
-            {
-                header.fileType = FileType.MSBT;
-                header.versionNumber = 3;
-            }
-            ByteOrder = aByteOrder;
-            MessageEncoding = aEncoding;
+            return Write();
         }
-        public WMBP(Stream stm, bool keepOffset)
-        {
-            if (!keepOffset)
-            {
-                stm.Position = 0;
-            }
-            read(stm);
-        }
-        public WMBP(byte[] data)
-        {
-            Stream stm = new MemoryStream(data);
-            read(stm);
-        }
-        public WMBP(List<byte> data)
-        {
-            Stream stm = new MemoryStream(data.ToArray());
-            read(stm);
-        }
-        //public byte[] Save()
-        //{
-        //    return write();
-        //}
 
         #region reading code
-        private void read(Stream stm)
+        protected override void Read(Stream stm)
         {
+            var bdr = CreateReadEnvironment(stm);
+
+            #region checkers
+
             bool isWLNG = false;
             bool isWSYL = false;
             bool isWFNT = false;
+
+            #endregion
 
             #region buffers
 
@@ -110,40 +53,34 @@ namespace CLMS
 
             #endregion
 
-            header = new(new(stm));
-            BinaryDataReader bdr = new(stm, header.encoding);
-            SharedDebug.PrintHeader(header);
-
-            bdr.ByteOrder = header.byteOrder;
-
-            for (int i = 0; i < header.numberOfSections; i++)
+            for (int i = 0; i < Header.NumberOfSections; i++)
             {
                 string cSectionMagic = bdr.ReadASCIIString(4);
                 uint cSectionSize = bdr.ReadUInt32();
-                bdr.skipBytes(8);
+                bdr.SkipBytes(8);
                 long cPositionBuf = bdr.Position;
                 switch (cSectionMagic)
                 {
                     case "WLNG":
                         isWLNG = true;
 
-                        languageBuf = getWLNG(bdr);
+                        languageBuf = GetWLNG(bdr);
                         break;
                     case "WSYL":
                         isWSYL = true;
 
-                        languageStyleBuf = getWSYL(bdr, languageBuf.Length);
+                        languageStyleBuf = GetWSYL(bdr, languageBuf.Length);
                         break;
                     case "WFNT":
                         isWFNT = true;
 
-                        fontBuf = getWFNT(bdr);
+                        fontBuf = GetWFNT(bdr);
                         break;
 
                 }
                 bdr.Position = cPositionBuf;
-                bdr.skipBytes(cSectionSize);
-                bdr.alignPos(0x10);
+                bdr.SkipBytes(cSectionSize);
+                bdr.AlignPos(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -152,7 +89,7 @@ namespace CLMS
             {
                 for (int i = 0; i < languageBuf.Length; i++)
                 {
-                    languageBuf[i].languageStyles = languageStyleBuf[i];
+                    languageBuf[i].LanguageStyles = languageStyleBuf[i];
                 }
                 Languages = languageBuf.ToList();
             }
@@ -165,7 +102,7 @@ namespace CLMS
         #endregion
 
         #region parsing code
-        private byte[] write()
+        protected override byte[] Write()
         {
             return new byte[0];
         }

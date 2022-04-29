@@ -35,12 +35,12 @@ namespace CLMS
         {
             ConsoleColor colorBuf = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine(header.fileType.ToString());
-            Console.WriteLine("ByteOrder: " + header.byteOrder.ToString());
-            Console.WriteLine("Encoding: " + header.encoding.ToString().Replace("System.Text.", ""));
-            Console.WriteLine("Version: " + header.versionNumber);
-            Console.WriteLine("Number of Blocks: " + header.numberOfSections);
-            Console.WriteLine("Filesize: " + header.fileSize);
+            Console.WriteLine(header.FileType.ToString());
+            Console.WriteLine("ByteOrder: " + header.ByteOrder.ToString());
+            Console.WriteLine("Encoding: " + header.Encoding.ToString().Replace("System.Text.", ""));
+            Console.WriteLine("Version: " + header.VersionNumber);
+            Console.WriteLine("Number of Blocks: " + header.NumberOfSections);
+            Console.WriteLine("Filesize: " + header.FileSize);
             Console.ForegroundColor = colorBuf;
         }
     }
@@ -50,6 +50,7 @@ namespace CLMS
     {
         MSBT, // MsgStdBn (includes WMBT, since they share the same magic)
         MSBP, // MsgPrjBn
+        MSBF, // MsgFlwBn
         WMBP  // WMsgPrjB
     }
     internal static class Shared
@@ -74,32 +75,32 @@ namespace CLMS
         {
             return Encoding.ASCII.GetString(bdr.ReadBytes(count));
         }
-        public static bool checkMagic(string buf, string neededMagic)
+        public static bool CheckMagic(string buf, string neededMagic)
         {
             return buf == neededMagic;
         }
-        public static bool checkMagic(BinaryDataReader bdr, string neededMagic)
+        public static bool CheckMagic(BinaryDataReader bdr, string neededMagic)
         {
             return new string(bdr.ReadChars(neededMagic.Length)) == neededMagic;
         }
-        public static bool checkMagic(BinaryReader br, string neededMagic)
+        public static bool CheckMagic(BinaryReader br, string neededMagic)
         {
             return new string(br.ReadChars(neededMagic.Length)) == neededMagic;
         }
-        public static bool peekCheckMagic(BinaryDataReader bdr, string neededMagic)
+        public static bool PeekCheckMagic(BinaryDataReader bdr, string neededMagic)
         {
             bool buf = new string(bdr.ReadChars(neededMagic.Length)) == neededMagic;
-            skipBytesN(bdr, neededMagic.Length);
+            SkipBytesN(bdr, neededMagic.Length);
             return buf;
         }
-        public static bool peekCheckMagic(BinaryReader br, string neededMagic)
+        public static bool PeekCheckMagic(BinaryReader br, string neededMagic)
         {
             bool buf = new string(br.ReadChars(neededMagic.Length)) == neededMagic;
             br.BaseStream.Position -= neededMagic.Length;
             return buf;
         }
 
-        public static ByteOrder checkByteOrder(Stream stm)
+        public static ByteOrder CheckByteOrder(Stream stm)
         {
             byte byte1 = Convert.ToByte(stm.ReadByte());
             stm.ReadByte();
@@ -113,30 +114,30 @@ namespace CLMS
             }
         }
 
-        public static char[] peekChars(this BinaryDataReader bdr, int count)
+        public static char[] PeekChars(this BinaryDataReader bdr, int count)
         {
             char[] buf = bdr.ReadChars(count);
-            skipBytesN(bdr, count);
+            SkipBytesN(bdr, count);
             return buf;
         }
-        public static void skipByte(this BinaryDataReader bdr)
+        public static void SkipByte(this BinaryDataReader bdr)
         {
             bdr.Position++;
         }
-        public static void skipByteN(this BinaryDataReader bdr)
+        public static void SkipByteN(this BinaryDataReader bdr)
         {
             bdr.Position--;
         }
-        public static void skipBytes(this BinaryDataReader bdr, long length)
+        public static void SkipBytes(this BinaryDataReader bdr, long length)
         {
             bdr.Position += length;
         }
-        public static void skipBytesN(this BinaryDataReader bdr, long length)
+        public static void SkipBytesN(this BinaryDataReader bdr, long length)
         {
             bdr.Position -= length;
         }
 
-        public static void alignPos(this BinaryDataReader bdr, int alignmentSize)
+        public static void AlignPos(this BinaryDataReader bdr, int alignmentSize)
         {
             if (alignmentSize <= 0)
             {
@@ -147,7 +148,7 @@ namespace CLMS
             bdr.Position = finalPos;
         }
 
-        public static void align(this BinaryDataWriter bdw, int alignmentSize, byte alignmentByte)
+        public static void Align(this BinaryDataWriter bdw, int alignmentSize, byte alignmentByte)
         {
             if (alignmentSize <= 0)
             {
@@ -176,7 +177,7 @@ namespace CLMS
         {
             bdw.Write(Convert.ToChar(value).ToString(), BinaryStringFormat.NoPrefixOrTermination);
         }
-        public static void goBackWriteRestore(this BinaryDataWriter bdw, long goBackPosition, dynamic varToWrite)
+        public static void GoBackWriteRestore(this BinaryDataWriter bdw, long goBackPosition, dynamic varToWrite)
         {
             long PositionBuf = bdw.Position;
             bdw.Position = goBackPosition;

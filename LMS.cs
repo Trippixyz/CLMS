@@ -1,5 +1,6 @@
 ﻿using Syroot.BinaryData;
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -7,10 +8,95 @@ using System.Text;
 
 namespace CLMS
 {
+    public abstract class LMSBase
+    {
+        // general
+        public ByteOrder ByteOrder
+        {
+            get { return Header.ByteOrder; }
+            set { Header.ByteOrder = value; }
+        }
+        public Encoding Encoding
+        {
+            get { return Header.Encoding; }
+            set
+            {
+                Header.Encoding = value;
+                byte[] preamble = value.GetPreamble();
+                switch (preamble[0])
+                {
+                    case 0xFF:
+                        ByteOrder = ByteOrder.LittleEndian;
+                        break;
+
+                    case 0x00:
+                    case 0xFE:
+                        ByteOrder = ByteOrder.BigEndian;
+                        break;
+                }
+            }
+        }
+
+        #region private
+        private protected Header Header;
+        #endregion
+
+        public LMSBase() { }
+        public LMSBase(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader)
+        {
+            Header = new Header();
+            if (createDefaultHeader)
+            {
+                Header.FileType = FileType.MSBT;
+                Header.VersionNumber = 3;
+            }
+            ByteOrder = aByteOrder;
+            Encoding = aEncoding;
+        }
+        public LMSBase(Stream stm, bool keepOffset)
+        {
+            if (!keepOffset)
+            {
+                stm.Position = 0;
+            }
+            Read(stm);
+        }
+        public LMSBase(byte[] data)
+        {
+            Stream stm = new MemoryStream(data);
+            Read(stm);
+        }
+        public LMSBase(List<byte> data)
+        {
+            Stream stm = new MemoryStream(data.ToArray());
+            Read(stm);
+        }
+
+        // here to be overridden by a file format class
+        protected abstract void Read(Stream stm);
+        protected abstract byte[] Write();
+        public abstract byte[] Save();
+
+        public BinaryDataReader CreateReadEnvironment(Stream stm)
+        {
+            Header = new(new(stm));
+            BinaryDataReader bdr = new(stm, Header.Encoding);
+            bdr.ByteOrder = Header.ByteOrder;
+            return bdr;
+        }
+        public (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
+        {
+            Stream stm = new MemoryStream();
+            BinaryDataWriter bdw = new(stm, Header.Encoding);
+            ushort sectionNumber = 0;
+            Header.Write(bdw);
+            return (stm, bdw, sectionNumber);
+        }
+    }
     public class MessageCollection
     {
         public MSBP MessageProject;
-        public Dictionary<string, MSBT> Messages = new Dictionary<string, MSBT>();
+        public Dictionary<string, MSBT> Messages = new();
 
         public MessageCollection(MSBP aMessageProject)
         {
@@ -34,21 +120,21 @@ namespace CLMS
     {
         public static TagConfig ToTagConfig(this Tag aTag)
         {
-            return new(aTag.group, aTag.type);
+            return new(aTag.Group, aTag.Type);
         }
         public static Tag ToTag(this TagConfig aTagConfig)
         {
-            return new(aTagConfig.group, aTagConfig.type);
+            return new(aTagConfig.Group, aTagConfig.Type);
         }
         public static (string Group, string Type) ToStringPair(this Tag aTag, MSBP aMSBP)
         {
             foreach (var cControlTag in aMSBP.ControlTags)
             {
-                if (cControlTag.Index == aTag.group)
+                if (cControlTag.Index == aTag.Group)
                 {
                     for (ushort i = 0; i < cControlTag.TagGroup.ControlTagTypes.Count; i++)
                     {
-                        if (i == aTag.type)
+                        if (i == aTag.Type)
                         {
                             return (cControlTag.Name, cControlTag.TagGroup.ControlTagTypes[i].Name);
                         }
@@ -61,7 +147,7 @@ namespace CLMS
     internal static class LMS
     {
         #region section specific functions
-        public static uint calcHashTableSlotsNum(BinaryDataReader bdr)
+        public static uint CalcHashTableSlotsNum(BinaryDataReader bdr)
         {
             long startPosition = bdr.BaseStream.Position;
             uint hashTableNum = bdr.ReadUInt32();
@@ -69,21 +155,21 @@ namespace CLMS
             for (int i = 0; i < hashTableNum; i++)
             {
                 hashtableSlotsNum += bdr.ReadUInt32();
-                bdr.skipBytes(4);
+                bdr.SkipBytes(4);
             }
 
             bdr.BaseStream.Position = startPosition;
             return hashtableSlotsNum;
         }
-        public static long writeSectionHeader(BinaryDataWriter bdw, string magic)
+        public static long WriteSectionHeader(BinaryDataWriter bdw, string magic)
         {
             bdw.WriteASCIIString(magic);
             long sectionSizePosBuf = bdw.Position;
-            bdw.align(0x10, 0x00);
+            bdw.Align(0x10, 0x00);
 
             return sectionSizePosBuf;
         }
-        public static void calcAndSetSectionSize(BinaryDataWriter bdw, long sectionSizePosBuf)
+        public static void CalcAndSetSectionSize(BinaryDataWriter bdw, long sectionSizePosBuf)
         {
             long positionBuf = bdw.Position;
             uint sectionSize = (uint)(bdw.Position - (sectionSizePosBuf + 0x0C));
@@ -94,10 +180,10 @@ namespace CLMS
         }
 
         // msbt
-        public static string[] getLabels(BinaryDataReader bdr)
+        public static string[] GetLabels(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
-            string[] labels = new string[calcHashTableSlotsNum(bdr)];
+            string[] labels = new string[CalcHashTableSlotsNum(bdr)];
             uint hashTableNum = bdr.ReadUInt32();
             for (uint i = 0; i < hashTableNum; i++)
             {
@@ -117,11 +203,11 @@ namespace CLMS
 
             return labels;
         }
-        public static Dictionary<uint, uint> getNumLines(BinaryDataReader bdr)
+        public static Dictionary<uint, uint> GetNumLines(BinaryDataReader bdr)
         {
             uint numOfLines = bdr.ReadUInt32();
 
-            Dictionary<uint, uint> lines = new Dictionary<uint, uint>();
+            Dictionary<uint, uint> lines = new();
             for (uint i = 0; i < numOfLines; i++)
             {
                 uint id = bdr.ReadUInt32();
@@ -130,7 +216,7 @@ namespace CLMS
             }
             return lines;
         }
-        public static Attribute[] getAttributes(BinaryDataReader bdr, long cSectionSize)
+        public static Attribute[] GetAttributes(BinaryDataReader bdr, long cSectionSize)
         {
             long startPosition = bdr.Position;
             uint numOfAttributes = bdr.ReadUInt32();
@@ -187,7 +273,7 @@ namespace CLMS
 
             return attributes.ToArray();
         }
-        public static int[] getStyleIndices(BinaryDataReader bdr, long numberOfEntries)
+        public static int[] GetStyleIndices(BinaryDataReader bdr, long numberOfEntries)
         {
             int[] indexes = new int[numberOfEntries];
             for (uint i = 0; i < numberOfEntries; i++)
@@ -196,7 +282,7 @@ namespace CLMS
             }
             return indexes;
         }
-        public static Message[] getStrings(BinaryDataReader bdr, bool isATR1, Attribute[] attributes, bool isTSY1, int[] styleIndices)
+        public static Message[] GetStrings(BinaryDataReader bdr, bool isATR1, Attribute[] attributes, bool isTSY1, int[] styleIndices)
         {
             long startPosition = bdr.Position;
             uint stringNum = bdr.ReadUInt32();
@@ -206,11 +292,11 @@ namespace CLMS
                 Message cMessage = new();
                 if (isTSY1)
                 {
-                    cMessage.styleIndex = styleIndices[i];
+                    cMessage.StyleIndex = styleIndices[i];
                 }
                 if (isATR1)
                 {
-                    cMessage.attribute = attributes[i];
+                    cMessage.Attribute = attributes[i];
                 }
                 uint cStringOffset = bdr.ReadUInt32();
                 long positionBuf = bdr.Position;
@@ -229,15 +315,15 @@ namespace CLMS
                         Tag cTag = new(bdr.ReadUInt16(), bdr.ReadUInt16());
                         ushort cTagSize = bdr.ReadUInt16();
 
-                        cTag.parameters = bdr.ReadBytes(cTagSize);
+                        cTag.Parameters = bdr.ReadBytes(cTagSize);
 
-                        cMessage.tags.Add((j, cTag));
+                        cMessage.Tags.Add((j, cTag));
                     }
                     else if (cChar == 0x0F) // attempt to implement region tags
                     {
-                        cMessage.tags[cMessage.tags.Count - 1].Tag.hasRegionEnd = true;
-                        cMessage.tags[cMessage.tags.Count - 1].Tag.regionSize = j - cMessage.tags[cMessage.tags.Count - 1].Index;
-                        cMessage.tags[cMessage.tags.Count - 1].Tag.regionEndMarkerBytes = bdr.ReadBytes(4);
+                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.HasRegionEnd = true;
+                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionSize = j - cMessage.Tags[cMessage.Tags.Count - 1].Index;
+                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionEndMarkerBytes = bdr.ReadBytes(4);
 
                         //Console.WriteLine("0x0F:");
                         //Console.WriteLine("Region Size: " + cMessage.tags[cMessage.tags.Count - 1].regionSize);
@@ -253,7 +339,7 @@ namespace CLMS
                         j++;
                     }
                 }
-                cMessage.rawString = stringBuf;
+                cMessage.RawString = stringBuf;
 
                 messagesList.Add(cMessage);
                 bdr.Position = positionBuf;
@@ -263,7 +349,7 @@ namespace CLMS
         }
 
         // msbp
-        public static Color[] getColors(BinaryDataReader bdr)
+        public static Color[] GetColors(BinaryDataReader bdr)
         {
             uint colorNum = bdr.ReadUInt32();
             Color[] colors = new Color[colorNum];
@@ -276,7 +362,7 @@ namespace CLMS
 
             return colors;
         }
-        public static (AttributeInfo[], ushort[]) getAttributeInfos(BinaryDataReader bdr) // does NOT immediately add the lists
+        public static (AttributeInfo[], ushort[]) GetAttributeInfos(BinaryDataReader bdr) // does NOT immediately add the lists
         {
             uint attributeNum = bdr.ReadUInt32();
             AttributeInfo[] attributes = new AttributeInfo[attributeNum];
@@ -285,7 +371,7 @@ namespace CLMS
             for (int i = 0; i < attributeNum; i++)
             {
                 byte cType = bdr.ReadByte();
-                bdr.skipByte();
+                bdr.SkipByte();
                 ushort cListIndex = bdr.ReadUInt16();
                 uint cOffset = bdr.ReadUInt32();
 
@@ -296,7 +382,7 @@ namespace CLMS
 
             return (attributes, listIndices);
         }
-        public static List<string>[] getLists(BinaryDataReader bdr)
+        public static List<string>[] GetLists(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             uint listNum = bdr.ReadUInt32();
@@ -351,12 +437,12 @@ namespace CLMS
 
             return listsList.ToArray();
         }
-        public static List<(string tagGroupName, ushort tagGroupIndex, ushort[] tagGroupTypeIndices)> getTGG2(BinaryDataReader bdr)
+        public static List<(string tagGroupName, ushort tagGroupIndex, ushort[] tagGroupTypeIndices)> GetTGG2(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             ushort tagGroupNum = bdr.ReadUInt16();
             (string, ushort, ushort[])[] tagGroupData = new (string, ushort, ushort[])[tagGroupNum];
-            bdr.skipBytes(2);
+            bdr.SkipBytes(2);
 
             for (uint i = 0; i < tagGroupNum; i++)
             {
@@ -382,12 +468,12 @@ namespace CLMS
 
             return tagGroupData.ToList();
         } // poor code
-        public static List<(string tagTypeName, ushort[] tagTypeParameterIndices)> getTAG2(BinaryDataReader bdr)
+        public static List<(string tagTypeName, ushort[] tagTypeParameterIndices)> GetTAG2(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             ushort tagNum = bdr.ReadUInt16();
             List<(string, ushort[])> tagTypeData = new List<(string, ushort[])>();
-            bdr.skipBytes(2);
+            bdr.SkipBytes(2);
 
             for (uint i = 0; i < tagNum; i++)
             {
@@ -412,12 +498,12 @@ namespace CLMS
 
             return tagTypeData;
         } // poor code
-        public static List<(string tagParameterName, ControlTagParameter tagParameter, ushort[] controlTagListItemOffsets)> getTGP2(BinaryDataReader bdr)
+        public static List<(string tagParameterName, ControlTagParameter tagParameter, ushort[] controlTagListItemOffsets)> GetTGP2(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             ushort tagParameterNum = bdr.ReadUInt16();
             List<(string, ControlTagParameter, ushort[])> tagParameterData = new List<(string, ControlTagParameter, ushort[])>();
-            bdr.skipBytes(2);
+            bdr.SkipBytes(2);
 
             for (uint i = 0; i < tagParameterNum; i++)
             {
@@ -431,7 +517,7 @@ namespace CLMS
 
                 if (cType == 9)
                 {
-                    bdr.skipByte();
+                    bdr.SkipByte();
                     ushort numOfListItemIndices = bdr.ReadUInt16();
                     ushort[] listItemIndices = new ushort[numOfListItemIndices];
 
@@ -456,12 +542,12 @@ namespace CLMS
 
             return tagParameterData;
         } // poor code
-        public static string[] getTGL2(BinaryDataReader bdr)
+        public static string[] GetTGL2(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             uint listItemNum = bdr.ReadUInt16();
             string[] listItemNames = new string[listItemNum];
-            bdr.skipBytes(2);
+            bdr.SkipBytes(2);
 
             for (uint i = 0; i < listItemNum; i++)
             {
@@ -477,7 +563,7 @@ namespace CLMS
 
             return listItemNames;
         } // poor code
-        public static Style[] getStyles(BinaryDataReader bdr)
+        public static Style[] GetStyles(BinaryDataReader bdr)
         {
             uint styleNum = bdr.ReadUInt32();
             Style[] styles = new Style[styleNum];
@@ -489,7 +575,7 @@ namespace CLMS
 
             return styles;
         }
-        public static string[] getSourceFiles(BinaryDataReader bdr)
+        public static string[] GetSourceFiles(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             uint sourceNum = bdr.ReadUInt32();
@@ -510,12 +596,42 @@ namespace CLMS
             return sourceFiles;
         }
 
+        //msbf
+        public static (FLW2Entry[] flw2Entries, ushort[] branchEntries) GetFLW2(BinaryDataReader bdr)
+        {
+            ushort flowNum = bdr.ReadUInt16();
+            ushort branchNum = bdr.ReadUInt16();
+            bdr.ReadUInt32();
+            FLW2Entry[] flw2Entries = new FLW2Entry[flowNum];
+            ushort[] branchEntries = new ushort[branchNum];
+
+            for (ushort i = 0; i < flowNum; i++)
+            {
+                FLW2Entry cFLW2Entry = new();
+                cFLW2Entry.Type = bdr.ReadUInt16();
+                cFLW2Entry.Unk0 = bdr.ReadUInt16();
+                cFLW2Entry.Unk1 = bdr.ReadUInt16();
+                cFLW2Entry.Unk2 = bdr.ReadUInt16();
+                cFLW2Entry.Unk3 = bdr.ReadUInt16();
+                cFLW2Entry.Unk4 = bdr.ReadUInt16();
+
+                flw2Entries[i] = cFLW2Entry;
+            }
+
+            for (ushort i = 0; i < branchNum; i++)
+            {
+                branchEntries[i] = bdr.ReadUInt16();
+            }
+
+            return (flw2Entries, branchEntries);
+        }
+
         //wmbp
-        public static Language[] getWLNG(BinaryDataReader bdr)
+        public static Language[] GetWLNG(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             uint languagesNum = bdr.ReadUInt32();
-            bdr.alignPos(0x10);
+            bdr.AlignPos(0x10);
             Language[] languages = new Language[languagesNum];
 
             for (uint i = 0; i < languagesNum; i++)
@@ -528,8 +644,8 @@ namespace CLMS
                 byte cLanguageUnk0 = bdr.ReadByte();
                 string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
 
-                bdr.skipByte();
-                bdr.alignPos(0x10);
+                bdr.SkipByte();
+                bdr.AlignPos(0x10);
 
                 languages[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
 
@@ -538,11 +654,11 @@ namespace CLMS
 
             return languages;
         }
-        public static LanguageStyle[][] getWSYL(BinaryDataReader bdr, int numberOfLanguages)
+        public static LanguageStyle[][] GetWSYL(BinaryDataReader bdr, int numberOfLanguages)
         {
             long startPosition = bdr.Position;
             uint languageStylesNum = bdr.ReadUInt32();
-            bdr.alignPos(0x10);
+            bdr.AlignPos(0x10);
             LanguageStyle[][] languageStyles = new LanguageStyle[numberOfLanguages][];
 
             for (uint i = 0; i < numberOfLanguages; i++)
@@ -566,11 +682,11 @@ namespace CLMS
 
             return languageStyles;
         }
-        public static Font[] getWFNT(BinaryDataReader bdr)
+        public static Font[] GetWFNT(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             uint fontsNum = bdr.ReadUInt32();
-            bdr.alignPos(0x10);
+            bdr.AlignPos(0x10);
             Font[] fonts = new Font[fontsNum];
 
             for (uint i = 0; i < fontsNum; i++)
@@ -583,8 +699,8 @@ namespace CLMS
                 byte cLanguageUnk0 = bdr.ReadByte();
                 string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
 
-                bdr.skipByte();
-                bdr.alignPos(0x10);
+                bdr.SkipByte();
+                bdr.AlignPos(0x10);
 
                 fonts[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
 
@@ -596,7 +712,7 @@ namespace CLMS
         #endregion
 
         #region shared writing functions
-        public static void parseLabels(BinaryDataWriter bdw, string[] labels, bool optimize)
+        public static void ParseLabels(BinaryDataWriter bdw, string[] labels, bool optimize)
         {
             if (optimize)
             {
@@ -628,7 +744,7 @@ namespace CLMS
         /// <returns></returns>
         public static byte[] MergeByteArrays(params byte[][] byteArrays)
         {
-            List<byte> result = new List<byte>();
+            List<byte> result = new();
 
             foreach (byte[] cByteArray in byteArrays)
             {
@@ -656,21 +772,21 @@ namespace CLMS
         /// <summary>
         /// True if 'data' is System.String.
         /// </summary>
-        public bool isString;
+        public bool IsString;
         /// <summary>
         /// This either is System.Sring or System.Byte[].
         /// </summary>
-        public object data;
+        public object Data;
 
         public Attribute(byte[] aData)
         {
-            isString = false;
-            data = aData;
+            IsString = false;
+            Data = aData;
         }
         public Attribute(string aData)
         {
-            isString = true;
-            data = aData;
+            IsString = true;
+            Data = aData;
         }
     }
     public class Message
@@ -678,59 +794,65 @@ namespace CLMS
         /// <summary>
         /// Contains the raw message string. Tags are not included.
         /// </summary>
-        public string rawString = string.Empty;
+        public string RawString = "";
         /// <summary>
         /// A list of all tags throughout the message. 
         /// </summary>
-        public List<(uint Index, Tag Tag)> tags = new List<(uint Index, Tag Tag)>();
+        public List<(uint Index, Tag Tag)> Tags = new();
         /// <summary>
         /// The style index into the style table (usually found in the msbp). 
         /// To check if the msbt has style indices get the "hasStyleIndices" bool from the msbt class header.
         /// </summary>
-        public int styleIndex;
+        public int StyleIndex;
         /// <summary>
         /// The attribute of the message. 
         /// To check if the msbt has a attribute has attributes get the "hasAttributes" bool from the msbt class header.
         /// </summary>
-        public Attribute attribute;
+        public Attribute Attribute;
 
+
+        /// <summary>
+        /// Creates the Message through the parameters.
+        /// </summary>
+        /// <param name="parameters">Each parameter either be a System.String or a CLMS.Tag</param>
         public Message(params object[] parameters)
         {
             Edit(parameters);
         }
         /// <summary>
-        /// Cleans the rawString and the tags and sets them through the parameters.
+        /// Cleans the RawString and the Tags and sets them through the parameters.
         /// </summary>
-        /// <param name="parameters"></param>
+        /// <param name="parameters">Each parameter either be a System.String or a CLMS.Tag</param>
         public void Edit(params object[] parameters)
         {
-            tags.Clear();
-            rawString = string.Empty;
+            Tags.Clear();
+            RawString = string.Empty;
             foreach (object parameter in parameters)
             {
                 if (parameter is string)
                 {
-                    rawString += parameter;
+                    RawString += parameter;
                 }
                 else if (parameter is Tag)
                 {
                     Tag tag = (Tag)parameter;
-                    tags.Add(((uint)rawString.Length, tag));
+                    Tags.Add(((uint)RawString.Length, tag));
                 }
             }
         }
+        /// <paramref name="name"/>
         /// <summary>
-        /// Splits the 'rawString' by the tags in between it.
+        /// Splits the 'RawString' by the tags in between it.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>System.String[]</returns>
         public string[] SplitByTags()
         {
-            List<uint> indices = new List<uint>();
-            foreach ((uint Index, Tag Tag) in tags)
+            List<uint> indices = new();
+            foreach ((uint Index, Tag Tag) in Tags)
             {
                 indices.Add(Index);
             }
-            return rawString.SplitAt(indices.ToArray());
+            return RawString.SplitAt(indices.ToArray());
         }
         /// <summary>
         /// Splits the 'rawString' by a specific tagConfig.
@@ -739,15 +861,15 @@ namespace CLMS
         /// <returns></returns>
         public string[] SplitByTag(TagConfig tagConfig)
         {
-            List<uint> indices = new List<uint>();
-            foreach ((uint Index, Tag Tag) in tags)
+            List<uint> indices = new();
+            foreach ((uint Index, Tag Tag) in Tags)
             {
-                if (tagConfig.CompareWithTag(Tag))
+                if (tagConfig == Tag)
                 {
                     indices.Add(Index);
                 }
             }
-            return rawString.SplitAt(indices.ToArray());
+            return RawString.SplitAt(indices.ToArray());
         }
         /// <summary>
         /// Converts the Message object to 'params object[]'.
@@ -756,12 +878,12 @@ namespace CLMS
         /// <returns></returns>
         public object[] ToParams()
         {
-            List<object> parametersList = new List<object>();
+            List<object> parametersList = new();
             uint cMessagePosition = 0;
-            for (int i = 0; i < tags.Count; i++)
+            for (int i = 0; i < Tags.Count; i++)
             {
-                (uint cIndex, Tag cTag) = tags[i];
-                string cMessageSubString = rawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
+                (uint cIndex, Tag cTag) = Tags[i];
+                string cMessageSubString = RawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
 
                 cMessagePosition = cIndex;
 
@@ -774,7 +896,7 @@ namespace CLMS
             }
 
             // if the last tag isnt the actual end of the message (which is common)
-            string LastPartOfMessage = rawString.Substring((int)cMessagePosition);
+            string LastPartOfMessage = RawString.Substring((int)cMessagePosition);
 
             if (LastPartOfMessage.Length > 0)
             {
@@ -785,18 +907,18 @@ namespace CLMS
     }
     public class TagConfig
     {
-        public ushort group;
-        public ushort type;
+        public ushort Group;
+        public ushort Type;
 
         public TagConfig(Tag aTag)
         {
-            group = aTag.group;
-            type = aTag.type;
+            Group = aTag.Group;
+            Type = aTag.Type;
         }
         public TagConfig(ushort aGroup, ushort aType)
         {
-            group = aGroup;
-            type = aType;
+            Group = aGroup;
+            Type = aType;
         }
 
         /// <summary>
@@ -805,9 +927,19 @@ namespace CLMS
         /// </summary>
         /// <param name="tag"></param>
         /// <returns></returns>
-        public bool CompareWithTag(Tag tag)
+        public static bool operator ==(TagConfig tagConfig, Tag tag)
         {
-            return group == tag.group && type == tag.group;
+            return tagConfig.Group == tag.Group && tagConfig.Type == tag.Type;
+        }
+        /// <summary>
+        /// Compares the tag config with the tag.
+        /// It only returns true, if both the group and type aren't matching.
+        /// </summary>
+        /// <param name="tag"></param>
+        /// <returns></returns>
+        public static bool operator !=(TagConfig tagConfig, Tag tag)
+        {
+            return !(tagConfig.Group == tag.Group && tagConfig.Type == tag.Type);
         }
     }
     public class Tag
@@ -815,62 +947,62 @@ namespace CLMS
         /// <summary>
         /// The group of a tag.
         /// </summary>
-        public ushort group;
+        public ushort Group;
         /// <summary>
         /// The type of a tag within the group.
         /// </summary>
-        public ushort type;
+        public ushort Type;
 
         /// <summary>
         /// The parameters of the tag as a raw byte[].
         /// </summary>
-        public byte[] parameters;
+        public byte[] Parameters;
 
         /// <summary>
         /// Determines whether the tag has a region end or not.
         /// </summary>
-        public bool hasRegionEnd;
+        public bool HasRegionEnd;
         /// <summary>
         /// The size of the region.
         /// </summary>
-        public uint regionSize;
+        public uint RegionSize;
         /// <summary>
         /// The marker bytes at the end of the region.
         /// </summary>
-        public byte[] regionEndMarkerBytes;
+        public byte[] RegionEndMarkerBytes;
 
         public Tag(TagConfig aTagConfig)
         {
-            group = aTagConfig.group;
-            type = aTagConfig.type;
+            Group = aTagConfig.Group;
+            Type = aTagConfig.Type;
         }
         public Tag(ushort aGroup, ushort aType)
         {
-            group = aGroup;
-            type = aType;
-            parameters = new byte[0];
+            Group = aGroup;
+            Type = aType;
+            Parameters = new byte[0];
         }
         public Tag(ushort aGroup, ushort aType, byte[] aParameters)
         {
-            group = aGroup;
-            type = aType;
-            parameters = aParameters;
+            Group = aGroup;
+            Type = aType;
+            Parameters = aParameters;
         }
         public Tag(ushort aGroup, ushort aType, byte[] aParameters, uint aRegionSize)
         {
-            group = aGroup;
-            type = aType;
-            parameters = aParameters;
-            regionSize = aRegionSize;
-            regionEndMarkerBytes = new byte[] { 0x0F, 0x01, 0x00, 0x10, 0x00 };
+            Group = aGroup;
+            Type = aType;
+            Parameters = aParameters;
+            RegionSize = aRegionSize;
+            RegionEndMarkerBytes = new byte[] { 0x0F, 0x01, 0x00, 0x10, 0x00 };
         }
         public Tag(ushort aGroup, ushort aType, byte[] aParameters, uint aRegionSize, byte[] aRegionEndMarkerBytes)
         {
-            group = aGroup;
-            type = aType;
-            parameters = aParameters;
-            regionSize = aRegionSize;
-            regionEndMarkerBytes = aRegionEndMarkerBytes;
+            Group = aGroup;
+            Type = aType;
+            Parameters = aParameters;
+            RegionSize = aRegionSize;
+            RegionEndMarkerBytes = aRegionEndMarkerBytes;
         }
     }
 
@@ -880,94 +1012,93 @@ namespace CLMS
         /// <summary>
         /// Is true if the 'type'(private) is 9.
         /// </summary>
-        public bool hasList
+        public bool HasList
         {
-            get { return type == 9; }
-            set { if (value) { type = 9; } }
+            get { return Type == 9; }
+            set { if (value) { Type = 9; } }
         }
         /// <summary>
         /// Contains a list of strings. Can only be used if hasList is true | type is 9.
         /// </summary>
-        public List<string> list = new List<string>();
+        public List<string> List = new();
         /// <summary>
         /// The offset of the attribute. Unknown purpose. Is usually the same as the type.
         /// </summary>
-        public uint offset;
+        public uint Offset;
         /// <summary>
-        /// The type of the attribute. Needs to be 9 to make use of the list.
+        /// The Type of the Attribute. It needs to be 9 to make use of the List.
         /// </summary>
-        public byte type { get; private set; }
+        public byte Type
+        {
+            get { return _type; }
+            set
+            {
+                _type = value;
+                if (value == 9)
+                {
+                    HasList = true;
+                }
+                else
+                {
+                    HasList = false;
+                }
+            }
+        }
+        private byte _type;
 
         public AttributeInfo(byte aType, uint aOffset)
         {
-            setType(aType);
-            offset = aOffset;
-        }
-
-        /// <summary>
-        /// Sets the type.
-        /// </summary>
-        /// <param name="aType"></param>
-        public void setType(byte aType)
-        {
-            type = aType;
-            if (aType == 9)
-            {
-                hasList = true;
-            }
-            else
-            {
-                hasList = false;
-            }
+            Type = aType;
+            Offset = aOffset;
         }
     }
     public class ControlTagGroup
     {
-        public List<(string Name, ControlTagType TagType)> ControlTagTypes = new List<(string Name, ControlTagType TagType)>();
+        public List<(string Name, ControlTagType TagType)> ControlTagTypes = new();
     }
     public class ControlTagType
     {
-        public List<(string Name, ControlTagParameter TagParameter)> ControlTagParameters = new List<(string Name, ControlTagParameter TagParameter)>();
+        public List<(string Name, ControlTagParameter TagParameter)> ControlTagParameters = new();
     }
     public class ControlTagParameter
     {
         /// <summary>
-        /// Is true if the 'type'(private) is 9.
+        /// Is true if the 'Type'(private) is 9.
         /// </summary>
-        public bool hasList
+        public bool HasList
         {
-            get { return type == 9; }
-            set { if (value) { type = 9; } }
+            get { return Type == 9; }
+            set { if (value) { Type = 9; } }
         }
         /// <summary>
         /// Contains a list of strings. Can only be used if hasList is true | type is 9.
         /// </summary>
-        public List<string> list = new List<string>();
+        public List<string> List = new();
         /// <summary>
         /// The type of the tag parameter. Needs to be 9 to make use of the list.
         /// </summary>
-        public byte type { get; private set; }
+        public byte Type
+        {
+            get { return _type; }
+            set
+            {
+                _type = value;
+                if (value == 9)
+                {
+                    HasList = true;
+                }
+                else
+                {
+                    HasList = false;
+                }
+            }
+        }
+
+        private byte _type;
 
         public ControlTagParameter(byte aType)
         {
-            setType(aType);
-        }
-
-        /// <summary>
-        /// Sets the type.
-        /// </summary>
-        /// <param name="aType"></param>
-        public void setType(byte aType)
-        {
-            type = aType;
-            if (aType == 9)
-            {
-                hasList = true;
-            }
-            else
-            {
-                hasList = false;
-            }
+            Type = aType;
         }
     }
     public class Style
@@ -998,48 +1129,89 @@ namespace CLMS
         }
     }
 
-    //wmbp
+    // msbf
+    public class FLW2Entry
+    {
+        public ushort Type;
+        public ushort Unk0;
+        public ushort Unk1;
+        public ushort Unk2;
+        public ushort Unk3;
+        public ushort Unk4;
+    }
+
+    // wmbp
     public class Language
     {
         public string Name;
-        public byte unk0;
-        public LanguageStyle[] languageStyles;
+        public byte Unk0;
+        public LanguageStyle[] LanguageStyles;
         public Language(string aName, byte aUnk0)
         {
             Name = aName;
-            unk0 = aUnk0;
+            Unk0 = aUnk0;
         }
     }
     public class LanguageStyle
     {
-        public byte[] binary;
+        public byte[] Binary;
 
         public LanguageStyle(byte[] aBinary)
         {
-            binary = aBinary;
+            Binary = aBinary;
         }
     }
     public class Font
     {
         public string Name;
-        public byte unk0;
+        public byte Unk0;
 
         public Font(string aName, byte aUnk0)
         {
             Name = aName;
-            unk0 = aUnk0;
+            Unk0 = aUnk0;
         }
     }
 
-    //shared
+    // shared
     internal class Header
     {
-        public FileType fileType;
-        public ByteOrder byteOrder;
-        public Encoding encoding;
-        public byte versionNumber;
-        public ushort numberOfSections;
-        public uint fileSize;
+        public FileType FileType;
+        public ByteOrder ByteOrder
+        {
+            get { return _byteOrder; }
+            set
+            {
+                _byteOrder = value;
+                if (Encoding == Encoding.Unicode || Encoding == Encoding.BigEndianUnicode)
+                {
+                    if (value == ByteOrder.LittleEndian)
+                    {
+                        Encoding = Encoding.Unicode;
+                    }
+                    else
+                    {
+                        Encoding = Encoding.BigEndianUnicode;
+                    }
+                }
+                else if (Encoding == Encoding.UTF32 || Encoding == new UTF32Encoding(true, true))
+                {
+                    if (value == ByteOrder.LittleEndian)
+                    {
+                        Encoding = Encoding.UTF32;
+                    }
+                    else
+                    {
+                        Encoding = new UTF32Encoding(true, true);
+                    }
+                }
+            }
+        }
+        private ByteOrder _byteOrder;
+        public Encoding Encoding;
+        public byte VersionNumber;
+        public ushort NumberOfSections;
+        public uint FileSize;
 
         public Header()
         {
@@ -1052,81 +1224,58 @@ namespace CLMS
             switch (magic)
             {
                 case "MsgStdBn":
-                    fileType = FileType.MSBT;
+                    FileType = FileType.MSBT;
                     break;
                 case "MsgPrjBn":
-                    fileType = FileType.MSBP;
+                    FileType = FileType.MSBP;
+                    break;
+                case "MsgFlwBn":
+                    FileType = FileType.MSBF;
                     break;
                 case "WMsgPrjB":
-                    fileType = FileType.WMBP;
+                    FileType = FileType.WMBP;
                     break;
             }
-            byteOrder = (ByteOrder)bdr.ReadUInt16();
-            bdr.ByteOrder = byteOrder;
+            ByteOrder = (ByteOrder)bdr.ReadUInt16();
+            bdr.ByteOrder = ByteOrder;
             bdr.ReadUInt16();
             byte msgEncoding = bdr.ReadByte();
             switch (msgEncoding)
             {
-                case 0: encoding = Encoding.UTF8; break;
+                case 0: Encoding = Encoding.UTF8; break;
                 case 1:
-                    if (byteOrder == ByteOrder.BigEndian)
+                    if (ByteOrder == ByteOrder.BigEndian)
                     {
-                        encoding = Encoding.BigEndianUnicode;
+                        Encoding = Encoding.BigEndianUnicode;
                     }
                     else
                     {
-                        encoding = Encoding.Unicode;
+                        Encoding = Encoding.Unicode;
                     }
                     break;
                 case 2:
-                    if (byteOrder == ByteOrder.BigEndian)
+                    if (ByteOrder == ByteOrder.BigEndian)
                     {
-                        encoding = new UTF32Encoding(true, true);
+                        Encoding = new UTF32Encoding(true, true);
                     }
                     else
                     {
-                        encoding = Encoding.UTF32;
+                        Encoding = Encoding.UTF32;
                     }
                     break;
             }
-            versionNumber = bdr.ReadByte();
-            numberOfSections = bdr.ReadUInt16();
+            VersionNumber = bdr.ReadByte();
+            NumberOfSections = bdr.ReadUInt16();
             bdr.ReadUInt16();
-            fileSize = bdr.ReadUInt32();
+            FileSize = bdr.ReadUInt32();
             bdr.ReadBytes(0x0A);
 
             //PrintHeader(this);
         }
-        public void changeByteOrder(ByteOrder aByteOrder)
-        {
-            byteOrder = aByteOrder;
-            if (encoding == Encoding.Unicode || encoding == Encoding.BigEndianUnicode)
-            {
-                if (aByteOrder == ByteOrder.LittleEndian)
-                {
-                    encoding = Encoding.Unicode;
-                }
-                else
-                {
-                    encoding = Encoding.BigEndianUnicode;
-                }
-            }
-            else if (encoding == Encoding.UTF32 || encoding == new UTF32Encoding(true, true))
-            {
-                if (aByteOrder == ByteOrder.LittleEndian)
-                {
-                    encoding = Encoding.UTF32;
-                }
-                else
-                {
-                    encoding = new UTF32Encoding(true, true);
-                }
-            }
-        }
-        public void write(BinaryDataWriter bdw)
+        public void Write(BinaryDataWriter bdw)
         {
             bdw.ByteOrder = ByteOrder.BigEndian;
-            switch (fileType)
+            switch (FileType)
             {
                 case FileType.MSBT:
                     bdw.Write("MsgStdBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
@@ -1135,10 +1284,10 @@ namespace CLMS
                     bdw.Write("MsgPrjBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
                     break;
             }
-            bdw.Write((ushort)byteOrder);
-            bdw.ByteOrder = byteOrder;
+            bdw.Write((ushort)ByteOrder);
+            bdw.ByteOrder = ByteOrder;
             bdw.Write(new byte[2]);
-            switch (encoding.ToString().Replace("System.Text.", ""))
+            switch (Encoding.ToString().Replace("System.Text.", ""))
             {
                 case "UTF8Encoding+UTF8EncodingSealed":
                     bdw.Write((byte)0);
@@ -1150,13 +1299,13 @@ namespace CLMS
                     bdw.Write((byte)2);
                     break;
             }
-            bdw.Write(versionNumber);
-            bdw.Write(numberOfSections);
+            bdw.Write(VersionNumber);
+            bdw.Write(NumberOfSections);
             bdw.Write(new byte[2]);
-            bdw.Write(fileSize);
+            bdw.Write(FileSize);
             bdw.Write(new byte[10]);
         }
-        public void overwriteStats(BinaryDataWriter bdw, ushort newNumberOfBlocks, uint newFileSize)
+        public void OverwriteStats(BinaryDataWriter bdw, ushort newNumberOfBlocks, uint newFileSize)
         {
             bdw.Position = 0x0E;
             bdw.Write(newNumberOfBlocks);
