@@ -11,9 +11,9 @@ namespace CLMS
     public class MSBF : LMSBase
     {
         // specific
-        public List<FLW2Entry> FlowCharts = new List<FLW2Entry>();
+        public List<FlowChart> FlowCharts = new List<FlowChart>();
         public List<ushort> Branches = new List<ushort>();
-        public HashSet<string> ReferenceLabels = new HashSet<string>();
+        public Dictionary<int, string> ReferenceLabels = new Dictionary<int, string>();
 
         public MSBF() : base() { }
         public MSBF(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader) { }
@@ -41,9 +41,8 @@ namespace CLMS
             #region buffers
 
             // buffers
-            (FLW2Entry[] flw2Entries, ushort[] branchEntries) flw2Buf = new();
-
-            string[] fen1LabelBuf = new string[0];
+            (FlowChart[] flw2Entries, ushort[] branchEntries) flowChartBuf = new();
+            Dictionary<int, string> fen1LabelBuf = new();
 
             #endregion
 
@@ -61,12 +60,12 @@ namespace CLMS
                     case "FLW2":
                         isFLW2 = true;
 
-                        flw2Buf = GetFLW2(bdr);
+                        flowChartBuf = GetFLW2(bdr);
                         break;
                     case "FEN1":
                         isFEN1 = true;
 
-                        fen1LabelBuf = GetLabels(bdr);
+                        fen1LabelBuf = GetReferenceLabels(bdr);
                         break;
                 }
                 bdr.Position = cPositionBuf;
@@ -77,13 +76,13 @@ namespace CLMS
             // beginning of parsing buffers into class items
             if (isFLW2)
             {
-                FlowCharts = flw2Buf.flw2Entries.ToList();
-                Branches = flw2Buf.branchEntries.ToList();
+                FlowCharts = flowChartBuf.flw2Entries.ToList();
+                Branches = flowChartBuf.branchEntries.ToList();
             }
 
             if (isFEN1)
             {
-                ReferenceLabels = fen1LabelBuf.ToHashSet();
+                ReferenceLabels = fen1LabelBuf;
             }
         }
         #endregion

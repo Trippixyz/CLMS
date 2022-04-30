@@ -147,6 +147,8 @@ namespace CLMS
     internal static class LMS
     {
         #region section specific functions
+
+        // generic
         public static uint CalcHashTableSlotsNum(BinaryDataReader bdr)
         {
             long startPosition = bdr.BaseStream.Position;
@@ -184,8 +186,8 @@ namespace CLMS
         {
             long startPosition = bdr.Position;
             string[] labels = new string[CalcHashTableSlotsNum(bdr)];
-            uint hashTableNum = bdr.ReadUInt32();
-            for (uint i = 0; i < hashTableNum; i++)
+            uint hashSlotNum = bdr.ReadUInt32();
+            for (uint i = 0; i < hashSlotNum; i++)
             {
                 uint cHashEntryNum = bdr.ReadUInt32();
                 uint cHashOffset = bdr.ReadUInt32();
@@ -275,12 +277,12 @@ namespace CLMS
         }
         public static int[] GetStyleIndices(BinaryDataReader bdr, long numberOfEntries)
         {
-            int[] indexes = new int[numberOfEntries];
+            int[] indices = new int[numberOfEntries];
             for (uint i = 0; i < numberOfEntries; i++)
             {
-                indexes[i] = bdr.ReadInt32();
+                indices[i] = bdr.ReadInt32();
             }
-            return indexes;
+            return indices;
         }
         public static Message[] GetStrings(BinaryDataReader bdr, bool isATR1, Attribute[] attributes, bool isTSY1, int[] styleIndices)
         {
@@ -597,25 +599,25 @@ namespace CLMS
         }
 
         //msbf
-        public static (FLW2Entry[] flw2Entries, ushort[] branchEntries) GetFLW2(BinaryDataReader bdr)
+        public static (FlowChart[] flw2Entries, ushort[] branchEntries) GetFLW2(BinaryDataReader bdr)
         {
             ushort flowNum = bdr.ReadUInt16();
             ushort branchNum = bdr.ReadUInt16();
             bdr.ReadUInt32();
-            FLW2Entry[] flw2Entries = new FLW2Entry[flowNum];
+            FlowChart[] flowCharts = new FlowChart[flowNum];
             ushort[] branchEntries = new ushort[branchNum];
 
             for (ushort i = 0; i < flowNum; i++)
             {
-                FLW2Entry cFLW2Entry = new();
+                FlowChart cFLW2Entry = new();
                 cFLW2Entry.Type = bdr.ReadUInt16();
                 cFLW2Entry.Unk0 = bdr.ReadUInt16();
                 cFLW2Entry.Unk1 = bdr.ReadUInt16();
-                cFLW2Entry.Unk2 = bdr.ReadUInt16();
+                cFLW2Entry.Unk2 = bdr.ReadInt16();
                 cFLW2Entry.Unk3 = bdr.ReadUInt16();
                 cFLW2Entry.Unk4 = bdr.ReadUInt16();
 
-                flw2Entries[i] = cFLW2Entry;
+                flowCharts[i] = cFLW2Entry;
             }
 
             for (ushort i = 0; i < branchNum; i++)
@@ -623,7 +625,30 @@ namespace CLMS
                 branchEntries[i] = bdr.ReadUInt16();
             }
 
-            return (flw2Entries, branchEntries);
+            return (flowCharts, branchEntries);
+        }
+        public static Dictionary<int, string> GetReferenceLabels(BinaryDataReader bdr)
+        {
+            long startPosition = bdr.Position;
+            Dictionary<int, string> referenceLabels = new();
+            uint hashSlotNum = bdr.ReadUInt32();
+            for (uint i = 0; i < hashSlotNum; i++)
+            {
+                uint cHashEntryNum = bdr.ReadUInt32();
+                uint cHashOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.BaseStream.Position;
+
+                bdr.Position = startPosition + cHashOffset;
+                for (uint j = 0; j < cHashEntryNum; j++)
+                {
+                    byte cLabelLength = bdr.ReadByte();
+                    string cLabelString = bdr.ReadASCIIString(cLabelLength);
+                    referenceLabels.Add((int)bdr.ReadUInt32(), cLabelString);
+                }
+                bdr.Position = positionBuf;
+            }
+
+            return referenceLabels;
         }
 
         //wmbp
@@ -1130,12 +1155,12 @@ namespace CLMS
     }
 
     // msbf
-    public class FLW2Entry
+    public class FlowChart
     {
         public ushort Type;
         public ushort Unk0;
         public ushort Unk1;
-        public ushort Unk2;
+        public short Unk2;
         public ushort Unk3;
         public ushort Unk4;
     }
