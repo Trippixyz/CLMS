@@ -1308,6 +1308,12 @@ namespace CLMS
                 case FileType.MSBP:
                     bdw.Write("MsgPrjBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
                     break;
+                case FileType.MSBF:
+                    bdw.Write("MsgFlwBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+                    break;
+                case FileType.WMBP:
+                    bdw.Write("WMsgPrjB", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+                    break;
             }
             bdw.Write((ushort)ByteOrder);
             bdw.ByteOrder = ByteOrder;
@@ -1330,7 +1336,7 @@ namespace CLMS
             bdw.Write(FileSize);
             bdw.Write(new byte[10]);
         }
-        public void OverwriteStats(BinaryDataWriter bdw, ushort newNumberOfBlocks, uint newFileSize)
+        public void OverrideStats(BinaryDataWriter bdw, ushort newNumberOfBlocks, uint newFileSize)
         {
             bdw.Position = 0x0E;
             bdw.Write(newNumberOfBlocks);

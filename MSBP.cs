@@ -419,7 +419,7 @@ namespace CLMS
                 sectionNumber++;
             }
 
-            Header.OverwriteStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
+            Header.OverrideStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
 
             return ReadFully(stm);
         }

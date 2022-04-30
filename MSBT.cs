@@ -470,18 +470,17 @@ namespace CLMS
             }
             if (HasStyleIndices)
             {
-                int[] styleIndexes = new int[Messages.Count];
+                int[] styleIndices = new int[Messages.Count];
                 for (uint i = 0; i < Messages.Count; i++)
                 {
-                    styleIndexes[i] = Messages[Messages.Keys.ToArray()[i]].StyleIndex;
+                    styleIndices[i] = Messages[Messages.Keys.ToArray()[i]].StyleIndex;
                 }
-                WriteTSY1(bdw, styleIndexes);
+                WriteTSY1(bdw, styleIndices);
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
             WriteTXT2(bdw);
             bdw.Align(0x10, 0xAB);
-
             sectionNumber++;
 
             if (IsWMBT)
@@ -489,7 +488,7 @@ namespace CLMS
                 sectionNumber++;
             }
 
-            Header.OverwriteStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
+            Header.OverrideStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
 
             return ReadFully(stm);
         }
