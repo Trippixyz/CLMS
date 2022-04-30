@@ -1,7 +1,7 @@
 # CLMS
-> **C**ool **L**ibrary **M**essage **S**tudio recreation
+> <b>C</b>ool <b>L</b>ibrary <b>M</b>essage <b>S</b>tudio recreation
 
-An attempt to build a fully working LMS library written in c#.
+An attempt to build a fully working LMS library written in c#.something style bolded
 
 ## Requirements
 * NET 5.0
