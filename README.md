@@ -1,4 +1,6 @@
 # CLMS
+> **C**ool **L**ibrary **M**essage **S**tudio recreation
+
 An attempt to build a fully working LMS library written in c#.
 
 ## Requirements
@@ -6,7 +8,7 @@ An attempt to build a fully working LMS library written in c#.
 * Syroot.BinaryData v2.0.1
 
 ## Setting up
-If it doesnt automatically install the required Syroot.BinaryData version using this:
+If it doesnt automatically install the required Syroot.BinaryData versions:
 `install-Package -version 2.0.1 Syroot.IO.BinaryData`
 
 ## Features
@@ -19,6 +21,9 @@ If it doesnt automatically install the required Syroot.BinaryData version using 
 
 ### MSBP file format
 * Editing of the colors, the attribute infos, the control tags, the styles and the source files.
+
+### MSBF file format
+* Reading of the fLow charts and the refernce labels.
 
 ### WMBP file format
 * Reading of the languages and the fonts.
