@@ -40,6 +40,10 @@ namespace CLMS
         // misc
         public bool UsesMessageID
         {
+            get
+            {
+                return HasNLI1;
+            }
             set
             {
                 HasNLI1 = value;
@@ -439,21 +443,16 @@ namespace CLMS
         {
             (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
 
-            if (HasLBL1)
+            
+            if (!UsesMessageID)
             {
                 WriteLBL1(bdw, Messages.Keys.ToArray(), true);
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            else if (HasNLI1)
+            else
             {
                 WriteNLI1(bdw, Messages.Keys.ToArray(), Messages.Values.ToArray());
-                bdw.Align(0x10, 0xAB);
-                sectionNumber++;
-            }
-            else // writes the LBL1 section by default
-            {
-                WriteLBL1(bdw, Messages.Keys.ToArray(), true);
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
@@ -463,13 +462,13 @@ namespace CLMS
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            if (HasATR1)
+            if (HasAttributes)
             {
                 WriteATR1(bdw, Messages.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            if (HasTSY1)
+            if (HasStyleIndices)
             {
                 int[] styleIndexes = new int[Messages.Count];
                 for (uint i = 0; i < Messages.Count; i++)
@@ -480,7 +479,7 @@ namespace CLMS
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
-            WriteTXT2(bdw, Messages.Values.ToArray(), IsWMBT);
+            WriteTXT2(bdw);
             bdw.Align(0x10, 0xAB);
 
             sectionNumber++;
@@ -578,10 +577,10 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTXT2(BinaryDataWriter bdw, Message[] messages, bool isWMBT)
+        private void WriteTXT2(BinaryDataWriter bdw)
         {
             long sectionSizePosBuf;
-            if (!isWMBT)
+            if (!IsWMBT)
             {
                 sectionSizePosBuf = WriteSectionHeader(bdw, "TXT2");
             }
@@ -589,6 +588,8 @@ namespace CLMS
             {
                 sectionSizePosBuf = WriteSectionHeader(bdw, "TXTW");
             }
+
+            Message[] messages = Messages.Values.ToArray();
 
             long startPosition = bdw.Position;
             bdw.Write((uint)messages.Length);
