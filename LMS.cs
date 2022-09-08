@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Data;
+using System.ComponentModel.DataAnnotations;
 
 namespace CLMS
 {
@@ -18,7 +20,10 @@ namespace CLMS
         }
         public Encoding Encoding
         {
-            get { return Header.Encoding; }
+            get
+            {
+                return Header.Encoding;
+            }
             set
             {
                 Header.Encoding = value;
@@ -36,19 +41,42 @@ namespace CLMS
                 }
             }
         }
+        public byte VersionNumber
+        {
+            get
+            {
+                if (Header.VersionNumber != null)
+                {
+                    return Header.VersionNumber;
+                }
+                return 0;
+            }
+            set
+            {
+                Header.VersionNumber = value;
+            }
+        }
 
         #region private
+
         private protected Header Header;
+
         #endregion
 
-        public LMSBase() { }
-        public LMSBase(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader)
+        public LMSBase(FileType aFileType, ByteOrder aByteOrder = ByteOrder.LittleEndian, byte aVersionNumber = 3)
         {
-            Header = new Header();
+            Header = new();
+            Header.FileType = aFileType;
+            Header.ByteOrder = aByteOrder;
+            Header.VersionNumber = aVersionNumber;
+        }
+        public LMSBase(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader, FileType aFileType, byte aVersionNumber = 3)
+        {
+            Header = new();
             if (createDefaultHeader)
             {
-                Header.FileType = FileType.MSBT;
-                Header.VersionNumber = 3;
+                Header.FileType = aFileType;
+                Header.VersionNumber = aVersionNumber;
             }
             ByteOrder = aByteOrder;
             Encoding = aEncoding;
@@ -146,9 +174,7 @@ namespace CLMS
     }
     internal static class LMS
     {
-        #region section specific functions
-
-        // generic
+        #region generic
         public static uint CalcHashTableSlotsNum(BinaryDataReader bdr)
         {
             long startPosition = bdr.BaseStream.Position;
@@ -180,9 +206,10 @@ namespace CLMS
 
             bdw.Position = positionBuf;
         }
+        #endregion
 
-        // msbt
-        public static string[] GetLabels(BinaryDataReader bdr)
+        #region shared reading functions
+        public static string[] ReadLabels(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
             string[] labels = new string[CalcHashTableSlotsNum(bdr)];
@@ -205,539 +232,10 @@ namespace CLMS
 
             return labels;
         }
-        public static Dictionary<uint, uint> GetNumLines(BinaryDataReader bdr)
-        {
-            uint numOfLines = bdr.ReadUInt32();
-
-            Dictionary<uint, uint> lines = new();
-            for (uint i = 0; i < numOfLines; i++)
-            {
-                uint id = bdr.ReadUInt32();
-                uint index = bdr.ReadUInt32();
-                lines.Add(id, index);
-            }
-            return lines;
-        }
-        public static Attribute[] GetAttributes(BinaryDataReader bdr, long cSectionSize)
-        {
-            long startPosition = bdr.Position;
-            uint numOfAttributes = bdr.ReadUInt32();
-            uint sizePerAttribute = bdr.ReadUInt32();
-            List<Attribute> attributes = new List<Attribute>();
-            List<byte[]> attributeBytesList = new List<byte[]>();
-            for (uint i = 0; i < numOfAttributes; i++)
-            {
-                attributeBytesList.Add(bdr.ReadBytes((int)sizePerAttribute));
-            }
-
-            if (cSectionSize > (8 + (numOfAttributes * sizePerAttribute)) && sizePerAttribute == 4) // if current section is longer than attributes, strings follow
-            {
-                uint[] attributeStringOffsets = new uint[numOfAttributes];
-
-                foreach (byte[] cAttributeBytes in attributeBytesList)
-                {
-                    // match system endianess with the BinaryDataReader if wrong
-                    if ((BitConverter.IsLittleEndian && bdr.ByteOrder == ByteOrder.BigEndian) ||
-                        (!BitConverter.IsLittleEndian && bdr.ByteOrder == ByteOrder.LittleEndian))
-                    {
-                        Array.Reverse(cAttributeBytes);
-                    }
-
-                    uint cStringOffset = BitConverter.ToUInt32(cAttributeBytes);
-
-                    bdr.Position = startPosition + cStringOffset;
-
-                    bool isNullChar = false;
-                    string stringBuf = string.Empty;
-
-                    while (!isNullChar)
-                    {
-                        char cChar = bdr.ReadChar();
-                        if (cChar == 0x00)
-                        {
-                            isNullChar = true;
-                        }
-                        else
-                        {
-                            stringBuf += cChar;
-                        }
-                    }
-                    attributes.Add(new(stringBuf));
-                }
-            }
-            else
-            {
-                for (int i = 0; i < numOfAttributes; i++)
-                {
-                    attributes.Add(new(attributeBytesList[i]));
-                }
-            }
-
-            return attributes.ToArray();
-        }
-        public static int[] GetStyleIndices(BinaryDataReader bdr, long numberOfEntries)
-        {
-            int[] indices = new int[numberOfEntries];
-            for (uint i = 0; i < numberOfEntries; i++)
-            {
-                indices[i] = bdr.ReadInt32();
-            }
-            return indices;
-        }
-        public static Message[] GetStrings(BinaryDataReader bdr, bool isATR1, Attribute[] attributes, bool isTSY1, int[] styleIndices)
-        {
-            long startPosition = bdr.Position;
-            uint stringNum = bdr.ReadUInt32();
-            List<Message> messagesList = new List<Message>();
-            for (uint i = 0; i < stringNum; i++)
-            {
-                Message cMessage = new();
-                if (isTSY1)
-                {
-                    cMessage.StyleIndex = styleIndices[i];
-                }
-                if (isATR1)
-                {
-                    cMessage.Attribute = attributes[i];
-                }
-                uint cStringOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-
-                bdr.Position = startPosition + cStringOffset;
-
-                bool isNullChar = false;
-                string stringBuf = string.Empty;
-
-                uint j = 0;
-                while (!isNullChar)
-                {
-                    char cChar = bdr.ReadChar();
-                    if (cChar == 0x0E)
-                    {
-                        Tag cTag = new(bdr.ReadUInt16(), bdr.ReadUInt16());
-                        ushort cTagSize = bdr.ReadUInt16();
-
-                        cTag.Parameters = bdr.ReadBytes(cTagSize);
-
-                        cMessage.Tags.Add((j, cTag));
-                    }
-                    else if (cChar == 0x0F) // attempt to implement region tags
-                    {
-                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.HasRegionEnd = true;
-                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionSize = j - cMessage.Tags[cMessage.Tags.Count - 1].Index;
-                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionEndMarkerBytes = bdr.ReadBytes(4);
-
-                        //Console.WriteLine("0x0F:");
-                        //Console.WriteLine("Region Size: " + cMessage.tags[cMessage.tags.Count - 1].regionSize);
-                        //Console.WriteLine(bdr.Position);
-                    }
-                    else if (cChar == 0x00)
-                    {
-                        isNullChar = true;
-                    }
-                    else
-                    {
-                        stringBuf += cChar;
-                        j++;
-                    }
-                }
-                cMessage.RawString = stringBuf;
-
-                messagesList.Add(cMessage);
-                bdr.Position = positionBuf;
-            }
-
-            return messagesList.ToArray();
-        }
-
-        // msbp
-        public static Color[] GetColors(BinaryDataReader bdr)
-        {
-            uint colorNum = bdr.ReadUInt32();
-            Color[] colors = new Color[colorNum];
-
-            for (uint i = 0; i < colorNum; i++)
-            {
-                byte[] cColorBytes = bdr.ReadBytes(4);
-                colors[i] = Color.FromArgb(cColorBytes[3], cColorBytes[0], cColorBytes[1], cColorBytes[2]);
-            }
-
-            return colors;
-        }
-        public static (AttributeInfo[], ushort[]) GetAttributeInfos(BinaryDataReader bdr) // does NOT immediately add the lists
-        {
-            uint attributeNum = bdr.ReadUInt32();
-            AttributeInfo[] attributes = new AttributeInfo[attributeNum];
-            ushort[] listIndices = new ushort[attributeNum];
-
-            for (int i = 0; i < attributeNum; i++)
-            {
-                byte cType = bdr.ReadByte();
-                bdr.SkipByte();
-                ushort cListIndex = bdr.ReadUInt16();
-                uint cOffset = bdr.ReadUInt32();
-
-                attributes[i] = new(cType, cOffset);
-
-                listIndices[i] = cListIndex;
-            }
-
-            return (attributes, listIndices);
-        }
-        public static List<string>[] GetLists(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            uint listNum = bdr.ReadUInt32();
-            List<List<string>> listsList = new List<List<string>>();
-            HashSet<uint> listOffestsHash = new HashSet<uint>();
-
-            for (uint i = 0; i < listNum; i++)
-            {
-                listOffestsHash.Add(bdr.ReadUInt32());
-            }
-
-            uint[] listOffsets = listOffestsHash.ToArray();
-            for (uint i = 0; i < listNum; i++)
-            {
-                List<string> cList = new List<string>();
-
-                bdr.Position = startPosition + listOffsets[i];
-                uint cListItemNum = bdr.ReadUInt32();
-
-                HashSet<uint> cListItemsOffsetsHash = new HashSet<uint>();
-
-                for (uint j = 0; j < cListItemNum; j++)
-                {
-                    cListItemsOffsetsHash.Add(bdr.ReadUInt32());
-                }
-
-                uint[] cListItemsOffsets = cListItemsOffsetsHash.ToArray();
-                for (uint k = 0; k < cListItemNum; k++)
-                {
-                    bdr.Position = startPosition + listOffsets[i] + cListItemsOffsets[k];
-
-                    bool isNullChar = false;
-                    string stringBuf = string.Empty;
-
-                    while (!isNullChar)
-                    {
-                        char cChar = bdr.ReadChar();
-                        if (cChar == 0x00)
-                        {
-                            isNullChar = true;
-                        }
-                        else
-                        {
-                            stringBuf += cChar;
-                        }
-                    }
-                    cList.Add(stringBuf);
-                }
-
-                listsList.Add(cList);
-            }
-
-            return listsList.ToArray();
-        }
-        public static List<(string tagGroupName, ushort tagGroupIndex, ushort[] tagGroupTypeIndices)> GetTGG2(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            ushort tagGroupNum = bdr.ReadUInt16();
-            (string, ushort, ushort[])[] tagGroupData = new (string, ushort, ushort[])[tagGroupNum];
-            bdr.SkipBytes(2);
-
-            for (uint i = 0; i < tagGroupNum; i++)
-            {
-                uint cTagGroupPosition = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cTagGroupPosition;
-
-                ushort cTagGroupIndex = bdr.ReadUInt16();
-                ushort numOfTagIndices = bdr.ReadUInt16();
-                ushort[] cTagGroupTypeIndices = new ushort[numOfTagIndices];
-
-                for (uint j = 0; j < numOfTagIndices; j++)
-                {
-                    cTagGroupTypeIndices[j] = bdr.ReadUInt16();
-                }
-
-                string cTagGroupName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
-
-                tagGroupData[i] = (cTagGroupName, cTagGroupIndex, cTagGroupTypeIndices);
-
-                bdr.Position = positionBuf;
-            }
-
-            return tagGroupData.ToList();
-        } // poor code
-        public static List<(string tagTypeName, ushort[] tagTypeParameterIndices)> GetTAG2(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            ushort tagNum = bdr.ReadUInt16();
-            List<(string, ushort[])> tagTypeData = new List<(string, ushort[])>();
-            bdr.SkipBytes(2);
-
-            for (uint i = 0; i < tagNum; i++)
-            {
-                uint cTagPosition = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cTagPosition;
-
-                ushort numOfTagTypeParameterIndices = bdr.ReadUInt16();
-                ushort[] cTagTypeParameterIndices = new ushort[numOfTagTypeParameterIndices];
-
-                for (uint j = 0; j < numOfTagTypeParameterIndices; j++)
-                {
-                    cTagTypeParameterIndices[j] = bdr.ReadUInt16();
-                }
-
-                string cTagTypeName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
-
-                tagTypeData.Add((cTagTypeName, cTagTypeParameterIndices));
-
-                bdr.Position = positionBuf;
-            }
-
-            return tagTypeData;
-        } // poor code
-        public static List<(string tagParameterName, ControlTagParameter tagParameter, ushort[] controlTagListItemOffsets)> GetTGP2(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            ushort tagParameterNum = bdr.ReadUInt16();
-            List<(string, ControlTagParameter, ushort[])> tagParameterData = new List<(string, ControlTagParameter, ushort[])>();
-            bdr.SkipBytes(2);
-
-            for (uint i = 0; i < tagParameterNum; i++)
-            {
-                uint cTagPosition = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cTagPosition;
-
-                byte cType = bdr.ReadByte();
-
-                ControlTagParameter cControlTagParemeter = new(cType);
-
-                if (cType == 9)
-                {
-                    bdr.SkipByte();
-                    ushort numOfListItemIndices = bdr.ReadUInt16();
-                    ushort[] listItemIndices = new ushort[numOfListItemIndices];
-
-                    for (uint j = 0; j < numOfListItemIndices; j++)
-                    {
-                        listItemIndices[j] = bdr.ReadUInt16();
-                    }
-
-                    string cTagParameterName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
-
-                    tagParameterData.Add((cTagParameterName, cControlTagParemeter, listItemIndices));
-                }
-                else
-                {
-                    string cTagParameterName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
-
-                    tagParameterData.Add((cTagParameterName, cControlTagParemeter, new ushort[0]));
-                }
-
-                bdr.Position = positionBuf;
-            }
-
-            return tagParameterData;
-        } // poor code
-        public static string[] GetTGL2(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            uint listItemNum = bdr.ReadUInt16();
-            string[] listItemNames = new string[listItemNum];
-            bdr.SkipBytes(2);
-
-            for (uint i = 0; i < listItemNum; i++)
-            {
-                uint cListItemNameOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cListItemNameOffset;
-
-                string cListItemName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
-                listItemNames[i] = cListItemName;
-
-                bdr.Position = positionBuf;
-            }
-
-            return listItemNames;
-        } // poor code
-        public static Style[] GetStyles(BinaryDataReader bdr)
-        {
-            uint styleNum = bdr.ReadUInt32();
-            Style[] styles = new Style[styleNum];
-
-            for (uint i = 0; i < styleNum; i++)
-            {
-                styles[i] = new(bdr.ReadInt32(), bdr.ReadInt32(), bdr.ReadInt32(), bdr.ReadInt32());
-            }
-
-            return styles;
-        }
-        public static string[] GetSourceFiles(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            uint sourceNum = bdr.ReadUInt32();
-            string[] sourceFiles = new string[sourceNum];
-
-            for (uint i = 0; i < sourceNum; i++)
-            {
-                uint cSourceFileOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cSourceFileOffset;
-
-                string cSourceFile = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
-                sourceFiles[i] = cSourceFile;
-
-                bdr.Position = positionBuf;
-            }
-
-            return sourceFiles;
-        }
-
-        //msbf
-        public static (FlowChart[] flw2Entries, ushort[] branchEntries) GetFLW2(BinaryDataReader bdr)
-        {
-            ushort flowNum = bdr.ReadUInt16();
-            ushort branchNum = bdr.ReadUInt16();
-            bdr.ReadUInt32();
-            FlowChart[] flowCharts = new FlowChart[flowNum];
-            ushort[] branchEntries = new ushort[branchNum];
-
-            for (ushort i = 0; i < flowNum; i++)
-            {
-                FlowChart cFLW2Entry = new();
-                cFLW2Entry.Type = bdr.ReadUInt16();
-                cFLW2Entry.Unk0 = bdr.ReadUInt16();
-                cFLW2Entry.Unk1 = bdr.ReadUInt16();
-                cFLW2Entry.Unk2 = bdr.ReadInt16();
-                cFLW2Entry.Unk3 = bdr.ReadUInt16();
-                cFLW2Entry.Unk4 = bdr.ReadUInt16();
-
-                flowCharts[i] = cFLW2Entry;
-            }
-
-            for (ushort i = 0; i < branchNum; i++)
-            {
-                branchEntries[i] = bdr.ReadUInt16();
-            }
-
-            return (flowCharts, branchEntries);
-        }
-        public static Dictionary<int, string> GetReferenceLabels(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            Dictionary<int, string> referenceLabels = new();
-            uint hashSlotNum = bdr.ReadUInt32();
-            for (uint i = 0; i < hashSlotNum; i++)
-            {
-                uint cHashEntryNum = bdr.ReadUInt32();
-                uint cHashOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.BaseStream.Position;
-
-                bdr.Position = startPosition + cHashOffset;
-                for (uint j = 0; j < cHashEntryNum; j++)
-                {
-                    byte cLabelLength = bdr.ReadByte();
-                    string cLabelString = bdr.ReadASCIIString(cLabelLength);
-                    referenceLabels.Add((int)bdr.ReadUInt32(), cLabelString);
-                }
-                bdr.Position = positionBuf;
-            }
-
-            return referenceLabels;
-        }
-
-        //wmbp
-        public static Language[] GetWLNG(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            uint languagesNum = bdr.ReadUInt32();
-            bdr.AlignPos(0x10);
-            Language[] languages = new Language[languagesNum];
-
-            for (uint i = 0; i < languagesNum; i++)
-            {
-                uint cLanguageOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cLanguageOffset;
-
-                ushort cLanguageIndex = bdr.ReadUInt16();
-                byte cLanguageUnk0 = bdr.ReadByte();
-                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
-
-                bdr.SkipByte();
-                bdr.AlignPos(0x10);
-
-                languages[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
-
-                bdr.Position = positionBuf;
-            }
-
-            return languages;
-        }
-        public static LanguageStyle[][] GetWSYL(BinaryDataReader bdr, int numberOfLanguages)
-        {
-            long startPosition = bdr.Position;
-            uint languageStylesNum = bdr.ReadUInt32();
-            bdr.AlignPos(0x10);
-            LanguageStyle[][] languageStyles = new LanguageStyle[numberOfLanguages][];
-
-            for (uint i = 0; i < numberOfLanguages; i++)
-            {
-                languageStyles[i] = new LanguageStyle[languageStylesNum];
-            }
-
-            for (uint i = 0; i < languageStylesNum; i++)
-            {
-                uint cLanguageStyleOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cLanguageStyleOffset;
-
-                for (uint j = 0; j < numberOfLanguages; j++)
-                {
-                    languageStyles[j][i] = new(bdr.ReadBytes(0x40));
-                }
-
-                bdr.Position = positionBuf;
-            }
-
-            return languageStyles;
-        }
-        public static Font[] GetWFNT(BinaryDataReader bdr)
-        {
-            long startPosition = bdr.Position;
-            uint fontsNum = bdr.ReadUInt32();
-            bdr.AlignPos(0x10);
-            Font[] fonts = new Font[fontsNum];
-
-            for (uint i = 0; i < fontsNum; i++)
-            {
-                uint cFontOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cFontOffset;
-
-                ushort cLanguageIndex = bdr.ReadUInt16();
-                byte cLanguageUnk0 = bdr.ReadByte();
-                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
-
-                bdr.SkipByte();
-                bdr.AlignPos(0x10);
-
-                fonts[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
-
-                bdr.Position = positionBuf;
-            }
-
-            return fonts;
-        }
         #endregion
 
         #region shared writing functions
-        public static void ParseLabels(BinaryDataWriter bdw, string[] labels, bool optimize)
+        public static void WriteLabels(BinaryDataWriter bdw, string[] labels, bool optimize)
         {
             if (optimize)
             {
@@ -753,13 +251,13 @@ namespace CLMS
             }
             else
             {
-
+                // no implementation yet sry :/  (WHO WOULD NOT OPTIMIZE...)
             }
         }
         #endregion
     }
 
-    // msbt
+    #region msbt
     public static class TagTools
     {
         /// <summary>
@@ -967,7 +465,7 @@ namespace CLMS
             return !(tagConfig.Group == tag.Group && tagConfig.Type == tag.Type);
         }
     }
-    public class Tag
+    public class Tag // Regions have not yet been implemented in the best way but work for the moment
     {
         /// <summary>
         /// The group of a tag.
@@ -1030,8 +528,9 @@ namespace CLMS
             RegionEndMarkerBytes = aRegionEndMarkerBytes;
         }
     }
+    #endregion
 
-    // msbp
+    #region msbp
     public class AttributeInfo
     {
         /// <summary>
@@ -1053,23 +552,7 @@ namespace CLMS
         /// <summary>
         /// The Type of the Attribute. It needs to be 9 to make use of the List.
         /// </summary>
-        public byte Type
-        {
-            get { return _type; }
-            set
-            {
-                _type = value;
-                if (value == 9)
-                {
-                    HasList = true;
-                }
-                else
-                {
-                    HasList = false;
-                }
-            }
-        }
-        private byte _type;
+        public byte Type;
 
         public AttributeInfo(byte aType, uint aOffset)
         {
@@ -1102,24 +585,7 @@ namespace CLMS
         /// <summary>
         /// The type of the tag parameter. Needs to be 9 to make use of the list.
         /// </summary>
-        public byte Type
-        {
-            get { return _type; }
-            set
-            {
-                _type = value;
-                if (value == 9)
-                {
-                    HasList = true;
-                }
-                else
-                {
-                    HasList = false;
-                }
-            }
-        }
-
-        private byte _type;
+        public byte Type;
 
         public ControlTagParameter(byte aType)
         {
@@ -1153,19 +619,206 @@ namespace CLMS
             BaseColorIndex = aBaseColorIndex;
         }
     }
+    #endregion
 
-    // msbf
-    public class FlowChart
+    #region mbsf
+    internal class FlowData
     {
-        public ushort Type;
-        public ushort Unk0;
-        public ushort Unk1;
-        public short Unk2;
-        public ushort Unk3;
-        public ushort Unk4;
+        public FlowType Type;
+        public short Field0;
+        public short Field2;
+        public short Field4;
+        public short Field6;
+        public short Field8;
+        public FlowData(FlowType aType, short aField0, short aField2, short aField4, short aField6, short aField8)
+        {
+            Type = aType;
+            Field0 = aField0;
+            Field2 = aField2;
+            Field4 = aField4;
+            Field6 = aField6;
+            Field8 = aField8;
+        }
     }
 
-    // wmbp
+    public class FlowNode
+    {
+        public FlowType Type { get; private set; }
+
+        public FlowNode(FlowType aType)
+        {
+            Type = aType;
+        }
+    }
+    public class FlowNodeWithNextFlow : FlowNode
+    {
+        public FlowType NextFlowType
+        {
+            get
+            {
+                switch(NextFlow.GetType().Name)
+                {
+                    case "MessageFlowNode": return FlowType.Message;
+                    case "ConditionFlowNode": return FlowType.Condition;
+                    case "EventFlowNode": return FlowType.Event;
+                    case "InitializerFlowNode": return FlowType.Initializer;
+                }
+                return 0;
+            }
+        }
+        public object NextFlow;
+
+        public FlowNodeWithNextFlow(FlowType aType) : base(aType) { }
+    }
+
+    public class MessageFlowNode : FlowNodeWithNextFlow
+    {
+        public short GroupNumber;
+        public short MSBTEntry;
+        public short Unk1;
+
+        public MessageFlowNode() : base(FlowType.Message) { }
+    }
+    public class ConditionFlowNode : FlowNode
+    {
+        /// <summary>
+        /// This might be the amount of results(Though that conflicts with the idea of the boolean type)
+        /// </summary>
+        public short Always2;
+        public FlowType[] ConditionFlowTypes
+        {
+            get
+            {
+                FlowType[] result = new FlowType[2];
+                for (int i = 0; i < 2; i++)
+                {
+                    switch (ConditionFlows[i].GetType().Name)
+                    {
+                        case "MessageFlowNode": result[i] = FlowType.Message; break;
+                        case "ConditionFlowNode": result[i] = FlowType.Condition; break;
+                        case "EventFlowNode": result[i] = FlowType.Event; break;
+                        case "InitializerFlowNode": result[i] = FlowType.Initializer; break;
+                    }
+                }
+                return result;
+            }
+        }
+        public object[] ConditionFlows = new object[2];
+        /// <summary>
+        /// This depends on the game and is hardcoded in general.
+        /// </summary>
+        public short ConditionID;
+        public short Unk1;
+
+        public ConditionFlowNode() : base(FlowType.Condition) { }
+        public object GetConditionFlow(bool condition)
+        {
+            if (condition)
+            {
+                return ConditionFlows[0];
+            }
+            return ConditionFlows[1];
+        }
+    }
+    public class EventFlowNode : FlowNodeWithNextFlow
+    {
+        public short EventID;
+        public short Unk1;
+        public short Unk2;
+
+        public EventFlowNode() : base(FlowType.Event) { }
+    }
+    public class InitializerFlowNode : FlowNodeWithNextFlow
+    {
+        // What an empty place to look at
+        public short Unk1;
+        public short Unk2;
+        public short Unk3;
+
+        public InitializerFlowNode() : base(FlowType.Initializer) { }
+    }
+    /*
+    public class Flow : FlowData
+    {
+        public FlowType Type;
+        //public Type Type;
+        public short NextFlowID
+        {
+            get
+            {
+                switch (Type)
+                {
+                    //case Type _ when Type == typeof(MessageFlow):
+                    case FlowType.Message:
+                        return Field6;
+                    case FlowType.Event:
+                        return Field4;
+                    case FlowType.Initializer:
+                        return Field2;
+                }
+                return -1;
+            }
+            set
+            {
+                switch (Type)
+                {
+                    case FlowType.Message:
+                        Field6 = value;
+                        break;
+                    case FlowType.Event:
+                        Field4 = value;
+                        break;
+                    case FlowType.Initializer:
+                        Field2 = value;
+                        break;
+                }
+            }
+        }
+        public Flow(short aField0, short aField2, short aField4, short aField6, short aField8)
+        {
+            Field0 = aField0;
+            Field2 = aField2;
+            Field4 = aField4;
+            Field6 = aField6;
+            Field8 = aField8;
+        }
+    }
+    public class MessageFlow : Flow
+    {
+        public MessageFlow(short aField0, short aField2, short aField4, short aField6, short aField8) : base(aField0, aField2, aField4, aField6, aField8) { }
+
+        public short GroupNumber
+        {
+            get { return Field2; }
+            set { Field2 = value; }
+        }
+        public short MSBTEntryID
+        {
+            get { return Field4; }
+            set { Field4 = value; }
+        }
+    }
+    public class ConditionFlow : Flow
+    {
+        public ConditionFlow(short aField0, short aField2, short aField4, short aField6, short aField8) : base(aField0, aField2, aField4, aField6, aField8) { }
+
+        private short Always2 // note: this could potentially be the number of answers to the condition(although I doubt that there are conditions with more than 2 outcomes)
+        {
+            get { return Field2; }
+            set { Field2 = value; }
+        }
+    }
+    */
+    public enum FlowType : short
+    {
+        Message = 1,
+        Condition = 2,
+        Event = 3,
+        Initializer = 4
+    }
+    #endregion
+
+    #region wmbp
     public class Language
     {
         public string Name;
@@ -1197,8 +850,9 @@ namespace CLMS
             Unk0 = aUnk0;
         }
     }
+    #endregion
 
-    // shared
+    #region shared
     internal class Header
     {
         public FileType FileType;
@@ -1344,4 +998,5 @@ namespace CLMS
             bdw.Write(newFileSize);
         }
     }
+    #endregion
 }

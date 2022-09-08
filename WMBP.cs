@@ -12,11 +12,11 @@ namespace CLMS
     public class WMBP : LMSBase
     {
         // specific
-        public List<Language> Languages = new List<Language>();
-        public List<Font> Fonts = new List<Font>();
+        public List<Language> Languages = new();
+        public List<Font> Fonts = new();
 
-        public WMBP() : base() { }
-        public WMBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader) { }
+        public WMBP() : base(FileType.WMBP) { }
+        public WMBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.WMBP) { }
         public WMBP(Stream stm, bool keepOffset = true) : base(stm, keepOffset) { }
         public WMBP(byte[] data) : base(data) { }
         public WMBP(List<byte> data) : base(data) { }
@@ -26,6 +26,7 @@ namespace CLMS
         {
             return Write();
         }
+
 
         #region reading code
         protected override void Read(Stream stm)
@@ -42,14 +43,9 @@ namespace CLMS
 
             #region buffers
 
-            // language
-            Language[] languageBuf = new Language[0];
-
-            // language style
-            LanguageStyle[][] languageStyleBuf = new LanguageStyle[0][];
-
-            // font
-            Font[] fontBuf = new Font[0];
+            WLNG wlng = new();
+            WSYL wsyl = new();
+            WFNT wfnt = new();
 
             #endregion
 
@@ -64,17 +60,17 @@ namespace CLMS
                     case "WLNG":
                         isWLNG = true;
 
-                        languageBuf = GetWLNG(bdr);
+                        wlng = ReadWLNG(bdr);
                         break;
                     case "WSYL":
                         isWSYL = true;
 
-                        languageStyleBuf = GetWSYL(bdr, languageBuf.Length);
+                        wsyl = ReadWSYL(bdr, wlng.Languages.Length);
                         break;
                     case "WFNT":
                         isWFNT = true;
 
-                        fontBuf = GetWFNT(bdr);
+                        wfnt = ReadWFNT(bdr);
                         break;
 
                 }
@@ -87,24 +83,127 @@ namespace CLMS
 
             if (isWLNG && isWSYL)
             {
-                for (int i = 0; i < languageBuf.Length; i++)
+                for (int i = 0; i < wlng.Languages.Length; i++)
                 {
-                    languageBuf[i].LanguageStyles = languageStyleBuf[i];
+                    wlng.Languages[i].LanguageStyles = wsyl.LanguageStyles[i];
                 }
-                Languages = languageBuf.ToList();
+                Languages = wlng.Languages.ToList();
             }
 
             if (isWFNT)
             {
-                Fonts = fontBuf.ToList();
+                Fonts = wfnt.Fonts.ToList();
             }
+        }
+        private WLNG ReadWLNG(BinaryDataReader bdr)
+        {
+            WLNG result = new();
+
+            long startPosition = bdr.Position;
+            uint languagesNum = bdr.ReadUInt32();
+            bdr.AlignPos(0x10);
+            result.Languages = new Language[languagesNum];
+
+            for (uint i = 0; i < languagesNum; i++)
+            {
+                uint cLanguageOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+                bdr.Position = startPosition + cLanguageOffset;
+
+                ushort cLanguageIndex = bdr.ReadUInt16();
+                byte cLanguageUnk0 = bdr.ReadByte();
+                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+
+                bdr.SkipByte();
+                bdr.AlignPos(0x10);
+
+                result.Languages[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
+
+                bdr.Position = positionBuf;
+            }
+
+            return result;
+        }
+        private WSYL ReadWSYL(BinaryDataReader bdr, int numberOfLanguages)
+        {
+            WSYL result = new();
+
+            long startPosition = bdr.Position;
+            uint languageStylesNum = bdr.ReadUInt32();
+            bdr.AlignPos(0x10);
+            result.LanguageStyles = new LanguageStyle[numberOfLanguages][];
+
+            for (uint i = 0; i < numberOfLanguages; i++)
+            {
+                result.LanguageStyles[i] = new LanguageStyle[languageStylesNum];
+            }
+
+            for (uint i = 0; i < languageStylesNum; i++)
+            {
+                uint cLanguageStyleOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+                bdr.Position = startPosition + cLanguageStyleOffset;
+
+                for (uint j = 0; j < numberOfLanguages; j++)
+                {
+                    result.LanguageStyles[j][i] = new(bdr.ReadBytes(0x40));
+                }
+
+                bdr.Position = positionBuf;
+            }
+
+            return result;
+        }
+        private WFNT ReadWFNT(BinaryDataReader bdr)
+        {
+            WFNT result = new();
+
+            long startPosition = bdr.Position;
+            uint fontsNum = bdr.ReadUInt32();
+            bdr.AlignPos(0x10);
+            result.Fonts = new Font[fontsNum];
+
+            for (uint i = 0; i < fontsNum; i++)
+            {
+                uint cFontOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+                bdr.Position = startPosition + cFontOffset;
+
+                ushort cLanguageIndex = bdr.ReadUInt16();
+                byte cLanguageUnk0 = bdr.ReadByte();
+                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+
+                bdr.SkipByte();
+                bdr.AlignPos(0x10);
+
+                result.Fonts[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
+
+                bdr.Position = positionBuf;
+            }
+
+            return result;
         }
         #endregion
 
-        #region parsing code
+        #region writing code
         protected override byte[] Write()
         {
             return new byte[0];
+        }
+        #endregion
+
+        #region blocks
+        internal class WLNG
+        {
+            public Language[] Languages;
+        }
+        internal class WSYL
+        {
+            public LanguageStyle[][] LanguageStyles;
+        }
+        internal class WFNT
+        {
+            public Font[] Fonts;
         }
         #endregion
     }

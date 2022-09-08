@@ -35,7 +35,7 @@ namespace CLMS
 
         // specific
         public Message this[string key] { get => Messages[key]; set => Messages[key] = value; }
-        public Dictionary<string, Message> Messages = new Dictionary<string, Message>();
+        public Dictionary<string, Message> Messages = new();
 
         // misc
         public bool UsesMessageID
@@ -114,8 +114,8 @@ namespace CLMS
 
         #endregion
 
-        public MSBT() : base() { }
-        public MSBT(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader) { }
+        public MSBT() : base(FileType.MSBT) { }
+        public MSBT(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.MSBT) { }
         public MSBT(Stream stm, bool keepOffset = true) : base(stm, keepOffset) { }
         public MSBT(byte[] data) : base(data) { }
         public MSBT(List<byte> data) : base(data) { }
@@ -302,7 +302,7 @@ namespace CLMS
         }
         #endregion
 
-        // init
+
         #region reading code
         protected override void Read(Stream stm)
         {
@@ -321,16 +321,16 @@ namespace CLMS
 
             #region buffers
 
-            // buffers
-            string[] labelBuf = new string[0];
-            Dictionary<uint, uint> numLineBuf = new Dictionary<uint, uint>();
-            Attribute[] attributeBuf = new Attribute[0];
-            int[] styleIndexesBuf = new int[0];
-            Message[] messageBuf = new Message[0];
+            LBL1 lbl1 = new();
+            NLI1 nli1 = new();
+            ATO1 ato1 = new();
+            ATR1 atr1 = new();
+            TSY1 tsy1 = new();
+            TXT2 txt2 = new();
 
             #endregion
 
-            for (int i = 0; (i < Header.NumberOfSections) || (i < Header.NumberOfSections); i++)
+            for (int i = 0; i < Header.NumberOfSections; i++)
             {
                 if (bdr.EndOfStream)
                     continue;
@@ -345,43 +345,43 @@ namespace CLMS
                         isLBL1 = true;
 
                         HasLBL1 = true;
-                        labelBuf = GetLabels(bdr);
+                        lbl1 = ReadLBL1(bdr);
                         break;
                     case "NLI1":
                         isNLI1 = true;
 
                         HasNLI1 = true;
-                        numLineBuf = GetNumLines(bdr);
+                        nli1 = ReadNLI1(bdr);
                         break;
                     case "ATO1":
                         isATO1 = true;
 
                         HasATO1 = true;
-                        ATO1Content = bdr.ReadBytes((int)cSectionSize);
+                        ato1 = ReadATO1(bdr, cSectionSize);
                         break;
                     case "ATR1":
                         isATR1 = true;
 
                         HasATR1 = true;
-                        attributeBuf = GetAttributes(bdr, cSectionSize);
+                        atr1 = ReadATR1(bdr, cSectionSize);
                         break;
                     case "TSY1":
                         isTSY1 = true;
 
                         HasTSY1 = true;
-                        styleIndexesBuf = GetStyleIndices(bdr, cSectionSize / 4);
+                        tsy1 = ReadTSY1(bdr, cSectionSize / 4);
                         break;
                     case "TXT2":
                         isTXT2 = true;
 
-                        messageBuf = GetStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
+                        txt2 = ReadTXT2(bdr, isATR1, atr1, isTSY1, tsy1);
                         break;
                     case "TXTW": // if its a WMBT (basically a MSBT but for WarioWare(?))
                         isTXT2 = true;
 
                         i++;
                         IsWMBT = true;
-                        messageBuf = GetStrings(bdr, isATR1, attributeBuf, isTSY1, styleIndexesBuf);
+                        txt2 = ReadTXT2(bdr, isATR1, atr1, isTSY1, tsy1);
                         break;
                 }
                 bdr.Position = cPositionBuf;
@@ -392,17 +392,23 @@ namespace CLMS
             // beginning of parsing buffers into class items
             if (isLBL1 && isTXT2)
             {
-                for (uint i = 0; i < labelBuf.Length; i++)
+                for (uint i = 0; i < lbl1.Labels.Length; i++)
                 {
-                    Messages.Add(labelBuf[i], messageBuf[i]);
+                    Messages.Add(lbl1.Labels[i], txt2.Messages[i]);
                 }
             }
             else if (isNLI1 && isTXT2)
             {
-                foreach (var line in numLineBuf)
-                    Messages.Add(line.Key.ToString(), messageBuf[line.Value]);
+                foreach (var line in nli1.NumLines)
+                    Messages.Add(line.Key.ToString(), txt2.Messages[line.Value]);
             }
 
+            if (isATO1)
+            {
+                ATO1Content = ato1.Content;
+            }
+
+            #region ignorable debug code from early dev lol
             // debug printing
 
             //Console.WriteLine("LBL1: " + isLBL1);
@@ -434,11 +440,184 @@ namespace CLMS
             //    }
             //    Console.WriteLine();
             //}
+            #endregion
         }
+        private LBL1 ReadLBL1(BinaryDataReader bdr)
+        {
+            LBL1 result = new();
+
+            result.Labels = ReadLabels(bdr);
+
+            return result;
+        }
+        private NLI1 ReadNLI1(BinaryDataReader bdr)
+        {
+            NLI1 result = new();
+
+            uint numOfLines = bdr.ReadUInt32();
+            result.NumLines = new();
+            for (uint i = 0; i < numOfLines; i++)
+            {
+                uint id = bdr.ReadUInt32();
+                uint index = bdr.ReadUInt32();
+                result.NumLines.Add(id, index);
+            }
+            return result;
+        }
+        private ATO1 ReadATO1(BinaryDataReader bdr, long cSectionSize)
+        {
+            ATO1 result = new();
+
+            result.Content = bdr.ReadBytes((int)cSectionSize);
+
+            return result;
+        }
+        private ATR1 ReadATR1(BinaryDataReader bdr, long cSectionSize)
+        {
+            ATR1 result = new();
+
+            long startPosition = bdr.Position;
+            uint numOfAttributes = bdr.ReadUInt32();
+            uint sizePerAttribute = bdr.ReadUInt32();
+            List<Attribute> attributeList = new ();
+            List<byte[]> attributeBytesList = new();
+            for (uint i = 0; i < numOfAttributes; i++)
+            {
+                attributeBytesList.Add(bdr.ReadBytes((int)sizePerAttribute));
+            }
+
+            if (cSectionSize > (8 + (numOfAttributes * sizePerAttribute)) && sizePerAttribute == 4) // if current section is longer than attributes, strings follow
+            {
+                uint[] attributeStringOffsets = new uint[numOfAttributes];
+
+                foreach (byte[] cAttributeBytes in attributeBytesList)
+                {
+                    // match system endianess with the BinaryDataReader if wrong
+                    if ((BitConverter.IsLittleEndian && bdr.ByteOrder == ByteOrder.BigEndian) ||
+                        (!BitConverter.IsLittleEndian && bdr.ByteOrder == ByteOrder.LittleEndian))
+                    {
+                        Array.Reverse(cAttributeBytes);
+                    }
+
+                    uint cStringOffset = BitConverter.ToUInt32(cAttributeBytes);
+
+                    bdr.Position = startPosition + cStringOffset;
+
+                    bool isNullChar = false;
+                    string stringBuf = string.Empty;
+
+                    while (!isNullChar)
+                    {
+                        char cChar = bdr.ReadChar();
+                        if (cChar == 0x00)
+                        {
+                            isNullChar = true;
+                        }
+                        else
+                        {
+                            stringBuf += cChar;
+                        }
+                    }
+                    attributeList.Add(new(stringBuf));
+                }
+            }
+            else
+            {
+                for (int i = 0; i < numOfAttributes; i++)
+                {
+                    attributeList.Add(new(attributeBytesList[i]));
+                }
+            }
+
+            result.Attributes = attributeList.ToArray();
+
+            return result;
+        }
+        private TSY1 ReadTSY1(BinaryDataReader bdr, long numberOfEntries)
+        {
+            TSY1 result = new();
+
+            result.StyleIndices = new int[numberOfEntries];
+            for (uint i = 0; i < numberOfEntries; i++)
+            {
+                result.StyleIndices[i] = bdr.ReadInt32();
+            }
+
+            return result;
+        }
+        private TXT2 ReadTXT2(BinaryDataReader bdr, bool isATR1, ATR1 atr1, bool isTSY1, TSY1 sty1)
+        {
+            TXT2 result = new();
+
+            long startPosition = bdr.Position;
+            uint stringNum = bdr.ReadUInt32();
+            List<Message> messagesList = new List<Message>();
+            for (uint i = 0; i < stringNum; i++)
+            {
+                Message cMessage = new();
+                if (isTSY1)
+                {
+                    cMessage.StyleIndex = sty1.StyleIndices[i];
+                }
+                if (isATR1)
+                {
+                    cMessage.Attribute = atr1.Attributes[i];
+                }
+                uint cStringOffset = bdr.ReadUInt32();
+                long positionBuf = bdr.Position;
+
+                bdr.Position = startPosition + cStringOffset;
+
+                bool isNullChar = false;
+                string stringBuf = string.Empty;
+
+                uint j = 0;
+                while (!isNullChar)
+                {
+                    char cChar = bdr.ReadChar();
+                    if (cChar == 0x0E)
+                    {
+                        Tag cTag = new(bdr.ReadUInt16(), bdr.ReadUInt16());
+                        ushort cTagSize = bdr.ReadUInt16();
+
+                        cTag.Parameters = bdr.ReadBytes(cTagSize);
+
+                        cMessage.Tags.Add((j, cTag));
+                    }
+                    else if (cChar == 0x0F) // attempt to implement region tags
+                    {
+                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.HasRegionEnd = true;
+                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionSize = j - cMessage.Tags[cMessage.Tags.Count - 1].Index;
+                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionEndMarkerBytes = bdr.ReadBytes(4);
+
+                        //Console.WriteLine("0x0F:");
+                        //Console.WriteLine("Region Size: " + cMessage.tags[cMessage.tags.Count - 1].regionSize);
+                        //Console.WriteLine(bdr.Position);
+                    }
+                    else if (cChar == 0x00)
+                    {
+                        isNullChar = true;
+                    }
+                    else
+                    {
+                        stringBuf += cChar;
+                        j++;
+                    }
+                }
+                cMessage.RawString = stringBuf;
+
+                messagesList.Add(cMessage);
+                bdr.Position = positionBuf;
+            }
+
+            result.Messages = messagesList.ToArray();
+
+            return result;
+        }
+
         #endregion
 
-
-        #region parsing code
+        #region writing code
         protected override byte[] Write()
         {
             (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
@@ -496,7 +675,7 @@ namespace CLMS
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "LBL1");
 
-            ParseLabels(bdw, labels, optimize);
+            WriteLabels(bdw, labels, optimize);
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
@@ -638,6 +817,33 @@ namespace CLMS
             }
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
+        }
+        #endregion
+
+        #region blocks
+        internal class LBL1
+        {
+            public string[] Labels;
+        }
+        internal class NLI1
+        {
+            public Dictionary<uint, uint> NumLines;
+        }
+        internal class ATO1
+        {
+            public byte[] Content;
+        }
+        internal class ATR1
+        {
+            public Attribute[] Attributes;
+        }
+        internal class TSY1
+        {
+            public int[] StyleIndices;
+        }
+        internal class TXT2
+        {
+            public Message[] Messages;
         }
         #endregion
     }
