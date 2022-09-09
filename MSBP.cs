@@ -15,7 +15,7 @@ namespace CLMS
         // specific
         public Dictionary<string, Color> Colors = new();
         public Dictionary<string, AttributeInfo> AttributeInfos = new();
-        public List<(string Name, ushort Index, ControlTagGroup TagGroup)> ControlTags = new();
+        public Dictionary<ushort, ControlTagGroup> ControlTags = new();
         public Dictionary<string, Style> Styles = new();
         public List<string> SourceFiles = new();
 
@@ -78,9 +78,9 @@ namespace CLMS
             {
                 if (ControlTags[group].Name == aTagGroup)
                 {
-                    for (ushort type = 0; type < ControlTags[group].TagGroup.ControlTagTypes.Count; type++)
+                    for (ushort type = 0; type < ControlTags[group].ControlTagTypes.Count; type++)
                     {
-                        if (ControlTags[group].TagGroup.ControlTagTypes[type].Name == aTagType)
+                        if (ControlTags[group].ControlTagTypes[type].Name == aTagType)
                         {
                             return new(group, type);
                         }
@@ -95,13 +95,13 @@ namespace CLMS
         }
         public string[] TryGetControlTagByTagConfig(TagConfig aTagConfig)
         {
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in ControlTags)
+            foreach (var cControlTagGroup in ControlTags)
             {
-                for (ushort j = 0; j < cControlTagGroup.TagGroup.ControlTagTypes.Count; j++)
+                for (ushort j = 0; j < cControlTagGroup.Value.ControlTagTypes.Count; j++)
                 {
-                    if (aTagConfig.Group == cControlTagGroup.Index && aTagConfig.Type == j)
+                    if (aTagConfig.Group == cControlTagGroup.Key && aTagConfig.Type == j)
                     {
-                        return new string[] { cControlTagGroup.Name, cControlTagGroup.TagGroup.ControlTagTypes[j].Name };
+                        return new string[] { cControlTagGroup.Value.Name, cControlTagGroup.Value.ControlTagTypes[j].Name };
                     }
                 }
             }
@@ -114,11 +114,11 @@ namespace CLMS
 
         public bool ContainsControlTag(TagConfig aTagConfig)
         {
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in ControlTags)
+            foreach (var cControlTagGroup in ControlTags)
             {
-                for (ushort j = 0; j < cControlTagGroup.TagGroup.ControlTagTypes.Count; j++)
+                for (ushort j = 0; j < cControlTagGroup.Value.ControlTagTypes.Count; j++)
                 {
-                    if (aTagConfig.Group == cControlTagGroup.Index && aTagConfig.Type == j)
+                    if (aTagConfig.Group == cControlTagGroup.Key && aTagConfig.Type == j)
                     {
                         return true;
                     }
@@ -296,16 +296,19 @@ namespace CLMS
                     //Console.ForegroundColor = ConsoleColor.Red;
                     //Console.WriteLine(tagGroupDataBuf[i].tagGroupName + " (" + tagGroupDataBuf[i].tagGroupTypeIndices.Length + "):");
                     ControlTagGroup cControlTagGroup = new();
+                    cControlTagGroup.Name = tgg2.ControlTagGroups[i].TagGroupName;
                     foreach (ushort cTagGroupTypeIndex in tgg2.ControlTagGroups[i].TagGroupTypeIndices)
                     {
                         //Console.ForegroundColor = ConsoleColor.Green;
                         //Console.WriteLine("  " + tagTypeDataBuf[cTagGroupTypeIndex].tagTypeName);
                         ControlTagType cControlTagType = new();
+                        cControlTagType.Name = tag2.ControlTagTypes[cTagGroupTypeIndex].TagTypeName;
                         foreach (ushort cTagTypeParameterIndex in tag2.ControlTagTypes[cTagGroupTypeIndex].TagTypeParameterIndices)
                         {
                             //Console.ForegroundColor = ConsoleColor.White;
                             //Console.WriteLine("    " + tagParameterDataBuf[cTagTypeParameterIndex].tagParameterName);
                             ControlTagParameter cControlTagParameter = new(tgp2.ControlTagParameters[cTagTypeParameterIndex].TagParameter.Type);
+                            cControlTagParameter.Name = tgp2.ControlTagParameters[cTagTypeParameterIndex].TagParameterName;
                             if (tgp2.ControlTagParameters[cTagTypeParameterIndex].TagParameter.HasList)
                             {
                                 foreach (ushort cTagParameterListItemNameIndex in tgp2.ControlTagParameters[cTagTypeParameterIndex].TagListItemOffsets)
@@ -315,11 +318,11 @@ namespace CLMS
                                     cControlTagParameter.List.Add(tgl2.ListItemNames[cTagParameterListItemNameIndex]);
                                 }
                             }
-                            cControlTagType.ControlTagParameters.Add((tgp2.ControlTagParameters[cTagTypeParameterIndex].TagParameterName, cControlTagParameter));
+                            cControlTagType.ControlTagParameters.Add(cControlTagParameter);
                         }
-                        cControlTagGroup.ControlTagTypes.Add((tag2.ControlTagTypes[cTagGroupTypeIndex].TagTypeName, cControlTagType));
+                        cControlTagGroup.ControlTagTypes.Add(cControlTagType);
                     }
-                    ControlTags.Add((tgg2.ControlTagGroups[i].TagGroupName, tgg2.ControlTagGroups[i].TagGroupIndex, cControlTagGroup));
+                    ControlTags.Add(tgg2.ControlTagGroups[i].TagGroupIndex, cControlTagGroup);
                     //Console.WriteLine();
                 }
             }
@@ -791,7 +794,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTGG2(BinaryDataWriter bdw, List<(string Name, ushort Index, ControlTagGroup TagGroup)> controlTags)
+        private void WriteTGG2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TGG2");
 
@@ -803,12 +806,13 @@ namespace CLMS
 
             (string Name, ushort Index, ushort[] TagIndices)[] tagGroupData = new (string Name, ushort Index, ushort[] TagIndices)[controlTags.Count];
             ushort cTagIndex = 0;
+            var controlTagPairs = controlTags.ToArray();
             for (int i = 0; i < controlTags.Count; i++)
             {
-                tagGroupData[i].Name = controlTags[i].Name;
-                tagGroupData[i].Index = controlTags[i].Index;
+                tagGroupData[i].Name = controlTagPairs[i].Value.Name;
+                tagGroupData[i].Index = controlTagPairs[i].Key;
                 List<ushort> cTagIndices = new List<ushort>();
-                foreach (var ignore in controlTags[i].TagGroup.ControlTagTypes)
+                foreach (var ignore in controlTagPairs[i].Value.ControlTagTypes)
                 {
                     cTagIndices.Add(cTagIndex);
 
@@ -840,15 +844,15 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTAG2(BinaryDataWriter bdw, List<(string Name, ushort Index, ControlTagGroup TagGroup)> controlTags)
+        private void WriteTAG2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TAG2");
 
             // calculates the amount of tag types
             ushort numOfTagTypes = 0;
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTag in controlTags)
+            foreach (var cControlTag in controlTags)
             {
-                numOfTagTypes += (ushort)cControlTag.TagGroup.ControlTagTypes.Count;
+                numOfTagTypes += (ushort)cControlTag.Value.ControlTagTypes.Count;
             }
 
             long startPosition = bdw.Position;
@@ -859,19 +863,19 @@ namespace CLMS
 
             int i = 0;
             ushort cTagParameterIndex = 0;
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTag in controlTags)
+            foreach (var cControlTag in controlTags)
             {
-                for (int j = 0; j < cControlTag.TagGroup.ControlTagTypes.Count; j++)
+                for (int j = 0; j < cControlTag.Value.ControlTagTypes.Count; j++)
                 {
                     long cTagTypeOffset = bdw.Position;
                     bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cTagTypeOffset - startPosition));
                     //Console.WriteLine(hashTablePosBuf + (i * 4) + " : " + (cTagTypeOffset - startPosition));
 
-                    bdw.Write((ushort)cControlTag.TagGroup.ControlTagTypes[j].TagType.ControlTagParameters.Count);
+                    bdw.Write((ushort)cControlTag.Value.ControlTagTypes[j].ControlTagParameters.Count);
                     //Console.WriteLine("j: " + j);
                     //Console.WriteLine("Count: " + (ushort)cControlTag.TagGroup.ControlTagTypes[j].TagType.ControlTagParameters.Count);
 
-                    foreach (var ignore in cControlTag.TagGroup.ControlTagTypes[j].TagType.ControlTagParameters)
+                    foreach (var ignore in cControlTag.Value.ControlTagTypes[j].ControlTagParameters)
                     {
                         bdw.Write(cTagParameterIndex);
                         //Console.WriteLine(cTagParameterIndex);
@@ -880,7 +884,7 @@ namespace CLMS
                     //Console.ReadKey();
                     //Console.WriteLine();
 
-                    bdw.Write(cControlTag.TagGroup.ControlTagTypes[j].Name, BinaryStringFormat.NoPrefixOrTermination);
+                    bdw.Write(cControlTag.Value.ControlTagTypes[j].Name, BinaryStringFormat.NoPrefixOrTermination);
 
                     // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                     bdw.WriteChar(0x00);
@@ -893,17 +897,17 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTGP2(BinaryDataWriter bdw, List<(string Name, ushort Index, ControlTagGroup TagGroup)> controlTags)
+        private void WriteTGP2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TGP2");
 
             // calculates the amount of tag types
             ushort numOfTagParameters = 0;
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in controlTags)
+            foreach (var cControlTagGroup in controlTags)
             {
-                foreach ((string Name, ControlTagType TagType) in cControlTagGroup.TagGroup.ControlTagTypes)
+                foreach (var cControlTagType in cControlTagGroup.Value.ControlTagTypes)
                 {
-                    numOfTagParameters += (ushort)TagType.ControlTagParameters.Count;
+                    numOfTagParameters += (ushort)cControlTagType.ControlTagParameters.Count;
                 }
             }
 
@@ -915,23 +919,23 @@ namespace CLMS
 
             int i = 0;
             ushort cTagListItemIndex = 0;
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in controlTags)
+            foreach (var cControlTagGroup in controlTags)
             {
-                foreach ((string Name, ControlTagType TagType) cControlTagType in cControlTagGroup.TagGroup.ControlTagTypes)
+                foreach (var cControlTagType in cControlTagGroup.Value.ControlTagTypes)
                 {
-                    foreach ((string Name, ControlTagParameter TagParameter) cControlTagParameter in cControlTagType.TagType.ControlTagParameters)
+                    foreach (var cControlTagParameter in cControlTagType.ControlTagParameters)
                     {
                         long cTagTypeOffset = bdw.Position;
                         bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cTagTypeOffset - startPosition));
 
-                        bdw.Write(cControlTagParameter.TagParameter.Type);
+                        bdw.Write(cControlTagParameter.Type);
 
-                        if (cControlTagParameter.TagParameter.HasList)
+                        if (cControlTagParameter.HasList)
                         {
                             bdw.Write((byte)0x00);
-                            bdw.Write((ushort)cControlTagParameter.TagParameter.List.Count);
+                            bdw.Write((ushort)cControlTagParameter.List.Count);
 
-                            foreach (var ignore in cControlTagParameter.TagParameter.List)
+                            foreach (var ignore in cControlTagParameter.List)
                             {
                                 bdw.Write(cTagListItemIndex);
                                 cTagListItemIndex++;
@@ -952,19 +956,19 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTGL2(BinaryDataWriter bdw, List<(string Name, ushort Index, ControlTagGroup TagGroup)> controlTags)
+        private void WriteTGL2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TGL2");
 
             // calculates the amount of tag types
             ushort numOflistItems = 0;
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in controlTags)
+            foreach (var cControlTagGroup in controlTags)
             {
-                foreach ((string Name, ControlTagType TagType) cControlTagType in cControlTagGroup.TagGroup.ControlTagTypes)
+                foreach (var cControlTagType in cControlTagGroup.Value.ControlTagTypes)
                 {
-                    foreach ((string Name, ControlTagParameter TagParameter) in cControlTagType.TagType.ControlTagParameters)
+                    foreach (var cControlTagParameter in cControlTagType.ControlTagParameters)
                     {
-                        numOflistItems += (ushort)TagParameter.List.Count;
+                        numOflistItems += (ushort)cControlTagParameter.List.Count;
                     }
                 }
             }
@@ -976,13 +980,13 @@ namespace CLMS
             bdw.Position += numOflistItems * 4;
 
             int i = 0;
-            foreach ((string Name, ushort Index, ControlTagGroup TagGroup) cControlTagGroup in controlTags)
+            foreach (var cControlTagGroup in controlTags)
             {
-                foreach ((string Name, ControlTagType TagType) cControlTagType in cControlTagGroup.TagGroup.ControlTagTypes)
+                foreach (var cControlTagType in cControlTagGroup.Value.ControlTagTypes)
                 {
-                    foreach ((string Name, ControlTagParameter TagParameter) cControlTagParameter in cControlTagType.TagType.ControlTagParameters)
+                    foreach (var cControlTagParameter in cControlTagType.ControlTagParameters)
                     {
-                        foreach (string clistItem in cControlTagParameter.TagParameter.List)
+                        foreach (string clistItem in cControlTagParameter.List)
                         {
                             long cListItemOffset = bdw.Position;
                             bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cListItemOffset - startPosition));

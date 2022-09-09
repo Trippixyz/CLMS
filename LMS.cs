@@ -158,13 +158,13 @@ namespace CLMS
         {
             foreach (var cControlTag in aMSBP.ControlTags)
             {
-                if (cControlTag.Index == aTag.Group)
+                if (cControlTag.Key == aTag.Group)
                 {
-                    for (ushort i = 0; i < cControlTag.TagGroup.ControlTagTypes.Count; i++)
+                    for (ushort i = 0; i < cControlTag.Value.ControlTagTypes.Count; i++)
                     {
                         if (i == aTag.Type)
                         {
-                            return (cControlTag.Name, cControlTag.TagGroup.ControlTagTypes[i].Name);
+                            return (cControlTag.Value.Name, cControlTag.Value.ControlTagTypes[i].Name);
                         }
                     }
                 }
@@ -562,14 +562,17 @@ namespace CLMS
     }
     public class ControlTagGroup
     {
-        public List<(string Name, ControlTagType TagType)> ControlTagTypes = new();
+        public string Name;
+        public List<ControlTagType> ControlTagTypes = new();
     }
     public class ControlTagType
     {
-        public List<(string Name, ControlTagParameter TagParameter)> ControlTagParameters = new();
+        public string Name;
+        public List<ControlTagParameter> ControlTagParameters = new();
     }
     public class ControlTagParameter
     {
+        public string Name;
         /// <summary>
         /// Is true if the 'Type'(private) is 9.
         /// </summary>
