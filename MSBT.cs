@@ -11,28 +11,6 @@ namespace CLMS
 {
     public class MSBT : LMSBase
     {
-        // general
-        public Encoding MessageEncoding
-        {
-            get { return Header.Encoding; }
-            set
-            {
-                Header.Encoding = value;
-                byte[] preamble = value.GetPreamble();
-                switch (preamble[0])
-                {
-                    case 0xFF:
-                        ByteOrder = ByteOrder.LittleEndian;
-                        break;
-
-                    case 0x00:
-                    case 0xFE:
-                        ByteOrder = ByteOrder.BigEndian;
-                        break;
-                }
-            }
-        }
-
         // specific
         public Message this[string key] { get => Messages[key]; set => Messages[key] = value; }
         public Dictionary<string, Message> Messages = new();
