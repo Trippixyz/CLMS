@@ -53,6 +53,12 @@ namespace CLMS
         MSBF, // MsgFlwBn
         WMBP  // WMsgPrjB
     }
+    public enum EncodingType
+    {
+        UTF8,
+        UTF16,
+        UTF32
+    }
     internal static class Shared
     {
         public static byte[] ReadFully(Stream input)

@@ -22,11 +22,39 @@ namespace CLMS
         {
             get
             {
-                return Header.Encoding;
+                switch (Header.EncodingType)
+                {
+                    case EncodingType.UTF8: return Encoding.UTF8;
+                    case EncodingType.UTF16:
+                        if (Header.ByteOrder == ByteOrder.BigEndian)
+                        {
+                            return Encoding.BigEndianUnicode;
+                        }
+                        return Encoding.Unicode;
+                    case EncodingType.UTF32:
+                        if (Header.ByteOrder == ByteOrder.BigEndian)
+                        {
+                            return new UTF32Encoding(true, true);
+                        }
+                        return Encoding.UTF32;
+                }
+                return null;
             }
             set
             {
-                Header.Encoding = value;
+                switch (value.ToString())
+                {
+                    case "System.Text.UTF8Encoding+UTF8EncodingSealed":
+                        Header.EncodingType = EncodingType.UTF8;
+                        break;
+                    case "System.Text.UnicodeEncoding":
+                        Header.EncodingType = EncodingType.UTF16;
+                        break;
+                    case "System.Text.UTF32Encoding":
+                        Header.EncodingType = EncodingType.UTF32;
+                        break;
+                }
+
                 byte[] preamble = value.GetPreamble();
                 switch (preamble[0])
                 {
@@ -45,11 +73,7 @@ namespace CLMS
         {
             get
             {
-                if (Header.VersionNumber != null)
-                {
-                    return Header.VersionNumber;
-                }
-                return 0;
+                return Header.VersionNumber;
             }
             set
             {
@@ -69,6 +93,7 @@ namespace CLMS
             Header.FileType = aFileType;
             Header.ByteOrder = aByteOrder;
             Header.VersionNumber = aVersionNumber;
+            Encoding = Encoding.Unicode;
         }
         public LMSBase(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader, FileType aFileType, byte aVersionNumber = 3)
         {
@@ -108,14 +133,14 @@ namespace CLMS
         public BinaryDataReader CreateReadEnvironment(Stream stm)
         {
             Header = new(new(stm));
-            BinaryDataReader bdr = new(stm, Header.Encoding);
+            BinaryDataReader bdr = new(stm, Encoding);
             bdr.ByteOrder = Header.ByteOrder;
             return bdr;
         }
         public (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
         {
             Stream stm = new MemoryStream();
-            BinaryDataWriter bdw = new(stm, Header.Encoding);
+            BinaryDataWriter bdw = new(stm, Encoding);
             ushort sectionNumber = 0;
             Header.Write(bdw);
             return (stm, bdw, sectionNumber);
@@ -859,38 +884,8 @@ namespace CLMS
     internal class Header
     {
         public FileType FileType;
-        public ByteOrder ByteOrder
-        {
-            get { return _byteOrder; }
-            set
-            {
-                _byteOrder = value;
-                if (Encoding == Encoding.Unicode || Encoding == Encoding.BigEndianUnicode)
-                {
-                    if (value == ByteOrder.LittleEndian)
-                    {
-                        Encoding = Encoding.Unicode;
-                    }
-                    else
-                    {
-                        Encoding = Encoding.BigEndianUnicode;
-                    }
-                }
-                else if (Encoding == Encoding.UTF32 || Encoding == new UTF32Encoding(true, true))
-                {
-                    if (value == ByteOrder.LittleEndian)
-                    {
-                        Encoding = Encoding.UTF32;
-                    }
-                    else
-                    {
-                        Encoding = new UTF32Encoding(true, true);
-                    }
-                }
-            }
-        }
-        private ByteOrder _byteOrder;
-        public Encoding Encoding;
+        public ByteOrder ByteOrder;
+        public EncodingType EncodingType;
         public byte VersionNumber;
         public ushort NumberOfSections;
         public uint FileSize;
@@ -924,27 +919,9 @@ namespace CLMS
             byte msgEncoding = bdr.ReadByte();
             switch (msgEncoding)
             {
-                case 0: Encoding = Encoding.UTF8; break;
-                case 1:
-                    if (ByteOrder == ByteOrder.BigEndian)
-                    {
-                        Encoding = Encoding.BigEndianUnicode;
-                    }
-                    else
-                    {
-                        Encoding = Encoding.Unicode;
-                    }
-                    break;
-                case 2:
-                    if (ByteOrder == ByteOrder.BigEndian)
-                    {
-                        Encoding = new UTF32Encoding(true, true);
-                    }
-                    else
-                    {
-                        Encoding = Encoding.UTF32;
-                    }
-                    break;
+                case 0: EncodingType = EncodingType.UTF8; break;
+                case 1: EncodingType = EncodingType.UTF16; break;
+                case 2: EncodingType = EncodingType.UTF32; break;
             }
             VersionNumber = bdr.ReadByte();
             NumberOfSections = bdr.ReadUInt16();
@@ -975,15 +952,15 @@ namespace CLMS
             bdw.Write((ushort)ByteOrder);
             bdw.ByteOrder = ByteOrder;
             bdw.Write(new byte[2]);
-            switch (Encoding.ToString().Replace("System.Text.", ""))
+            switch ((int)EncodingType)
             {
-                case "UTF8Encoding+UTF8EncodingSealed":
+                case 0:
                     bdw.Write((byte)0);
                     break;
-                case "UnicodeEncoding":
+                case 1:
                     bdw.Write((byte)1);
                     break;
-                case "UTF32Encoding":
+                case 2:
                     bdw.Write((byte)2);
                     break;
             }
