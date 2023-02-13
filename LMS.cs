@@ -7,9 +7,16 @@ using System.Linq;
 using System.Text;
 using System.Data;
 using System.ComponentModel.DataAnnotations;
+using System.Reflection.Emit;
+using System.Xml.Linq;
 
 namespace CLMS
 {
+    public interface IYaml<T> // yaml format
+    {
+        public string ToYaml();
+        public static T FromYaml(string yaml) { return default(T); }
+    }
     public abstract class LMSBase
     {
         // general
@@ -17,6 +24,11 @@ namespace CLMS
         {
             get { return Header.ByteOrder; }
             set { Header.ByteOrder = value; }
+        }
+        public EncodingType EncodingType
+        {
+            get { return Header.EncodingType; }
+            set { Header.EncodingType = value; }
         }
         public Encoding Encoding
         {
@@ -81,10 +93,10 @@ namespace CLMS
             }
         }
 
+        public uint LabelSlotCount;
+
         #region private
-
         private protected Header Header;
-
         #endregion
 
         public LMSBase(FileType aFileType, ByteOrder aByteOrder = ByteOrder.LittleEndian, byte aVersionNumber = 3)
@@ -127,17 +139,17 @@ namespace CLMS
 
         // here to be overridden by a file format class
         protected abstract void Read(Stream stm);
-        protected abstract byte[] Write();
-        public abstract byte[] Save();
+        protected abstract byte[] Write(bool optimize);
+        public abstract byte[] Save(bool optimize = false);
 
-        public BinaryDataReader CreateReadEnvironment(Stream stm)
+        protected BinaryDataReader CreateReadEnvironment(Stream stm)
         {
             Header = new(new(stm));
             BinaryDataReader bdr = new(stm, Encoding);
             bdr.ByteOrder = Header.ByteOrder;
             return bdr;
         }
-        public (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
+        protected  (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
         {
             Stream stm = new MemoryStream();
             BinaryDataWriter bdw = new(stm, Encoding);
@@ -231,12 +243,23 @@ namespace CLMS
 
             bdw.Position = positionBuf;
         }
+        public static uint CalcHash(string label, uint numSlots)
+        {
+            uint hash = 0;
+            foreach (char cChar in label)
+            {
+                hash *= 0x492;
+                hash += cChar;
+            }
+            return (hash & 0xFFFFFFFF) % numSlots;
+        }
         #endregion
 
         #region shared reading functions
-        public static string[] ReadLabels(BinaryDataReader bdr)
+        public static LabelSection ReadLabels(BinaryDataReader bdr)
         {
             long startPosition = bdr.Position;
+            LabelSection result = new();
             string[] labels = new string[CalcHashTableSlotsNum(bdr)];
             uint hashSlotNum = bdr.ReadUInt32();
             for (uint i = 0; i < hashSlotNum; i++)
@@ -255,12 +278,15 @@ namespace CLMS
                 bdr.Position = positionBuf;
             }
 
-            return labels;
+            result.SlotNum = hashSlotNum;
+            result.Labels = labels;
+
+            return result;
         }
         #endregion
 
         #region shared writing functions
-        public static void WriteLabels(BinaryDataWriter bdw, string[] labels, bool optimize)
+        public static void WriteLabels(BinaryDataWriter bdw, uint hashSlotNum, string[] labels, bool optimize)
         {
             if (optimize)
             {
@@ -274,9 +300,56 @@ namespace CLMS
                 }
 
             }
-            else
+            else // no implementation yet sry :/  (WHO WOULD NOT OPTIMIZE...) (ok now its there)
             {
-                // no implementation yet sry :/  (WHO WOULD NOT OPTIMIZE...)
+                bdw.Write(hashSlotNum);
+
+                Dictionary<uint, List<string>> result = new();
+                for (int i = 0; i < labels.Length; i++)
+                {
+                    uint hash = CalcHash(labels[i], hashSlotNum);
+                    if (result.ContainsKey(hash))
+                    {
+                        result[hash].Add(labels[i]);
+                    }
+                    else
+                    {
+                        List<string> newlist = new();
+                        newlist.Add(labels[i]);
+                        result.Add(hash, newlist);
+                    }
+                }
+
+                var ordered = result.OrderBy(x => x.Key).ToDictionary(x => x.Key, x => x.Value);
+
+                uint offsetToLabels = hashSlotNum * 8 + 4;
+                for (uint i = 0; i < hashSlotNum; i++)
+                {
+                    if (ordered.ContainsKey(i))
+                    {
+                        bdw.Write(ordered[i].Count);
+                        bdw.Write(offsetToLabels);
+
+                        foreach (string cLabel in ordered[i])
+                        {
+                            offsetToLabels += 1 + (uint)cLabel.Length + 4;
+                        }
+                    }
+                    else
+                    {
+                        bdw.Write(0);
+                        bdw.Write(offsetToLabels);
+                    }
+                }
+                foreach (var cKeyValuePair in ordered)
+                {
+                    foreach (string cLabel in cKeyValuePair.Value)
+                    {
+                        int cLabelIndex = Array.IndexOf(labels, cLabel);
+                        bdw.Write(labels[cLabelIndex], BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+                        bdw.Write(cLabelIndex);
+                    }
+                }
             }
         }
         #endregion
@@ -317,24 +390,21 @@ namespace CLMS
     }
     public class Attribute
     {
-        /// <summary>
-        /// True if 'data' is System.String.
-        /// </summary>
-        public bool IsString;
-        /// <summary>
-        /// This either is System.Sring or System.Byte[].
-        /// </summary>
-        public object Data;
+        public byte[] Data;
+        public string String;
 
+        public Attribute()
+        {
+
+        }
         public Attribute(byte[] aData)
         {
-            IsString = false;
             Data = aData;
         }
-        public Attribute(string aData)
+        public Attribute(byte[] aData, string aString)
         {
-            IsString = true;
             Data = aData;
+            String = aString;
         }
     }
     public class Message
@@ -519,6 +589,10 @@ namespace CLMS
         /// </summary>
         public byte[] RegionEndMarkerBytes;
 
+        public Tag()
+        {
+
+        }
         public Tag(TagConfig aTagConfig)
         {
             Group = aTagConfig.Group;
@@ -881,6 +955,11 @@ namespace CLMS
     #endregion
 
     #region shared
+    internal class LabelSection
+    {
+        public uint SlotNum;
+        public string[] Labels;
+    }
     internal class Header
     {
         public FileType FileType;

@@ -1,7 +1,10 @@
-﻿using Syroot.BinaryData;
+﻿using SharpYaml.Serialization;
+using Syroot.BinaryData;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace CLMS
@@ -37,7 +40,7 @@ namespace CLMS
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine(header.FileType.ToString());
             Console.WriteLine("ByteOrder: " + header.ByteOrder.ToString());
-            Console.WriteLine("Encoding: " + header.Encoding.ToString().Replace("System.Text.", ""));
+            Console.WriteLine("Encoding: " + header.EncodingType.ToString());
             Console.WriteLine("Version: " + header.VersionNumber);
             Console.WriteLine("Number of Blocks: " + header.NumberOfSections);
             Console.WriteLine("Filesize: " + header.FileSize);
@@ -76,6 +79,67 @@ namespace CLMS
                 input.Position = PosBuf;
                 return ms.ToArray();
             }
+        }
+        public static string ByteArrayToString(byte[] ba, bool gap = false)
+        {
+            StringBuilder hex = new StringBuilder(ba.Length * 2);
+            for (int i = 0; i < ba.Length; i++)
+            {
+                hex.AppendFormat("{0:x2}", ba[i]);
+                if (gap && i < ba.Length - 1)
+                {
+                    hex.Append(" ");
+                }
+            }
+            return hex.ToString();
+        }
+        public static byte[] StringToByteArray(string text)
+        {
+            text = text.Replace(" ", "");
+
+            // if length is even
+            if (text.Length % 2 == 0)
+            {
+                byte[] result = new byte[text.Length/2];
+                int byteId = 0;
+                for (int strId = 0; strId < text.Length; strId += 2)
+                {
+                    result[byteId] = byte.Parse(text.Substring(strId, 2), System.Globalization.NumberStyles.HexNumber);
+                    //Console.WriteLine($"{text.Substring(strId, 2)} to {result[byteId].ToString("X2")}");
+
+                    byteId++;
+                }
+                return result;
+            }
+            return null;
+        }
+        public static int[] AllIndicesOf(this string str, string value)
+        {
+            if (String.IsNullOrEmpty(value))
+                throw new ArgumentException("the string to find may not be empty", "value");
+            List<int> indexes = new List<int>();
+            for (int index = 0; ; index += value.Length)
+            {
+                index = str.IndexOf(value, index);
+                if (index == -1)
+                    return indexes.ToArray();
+                indexes.Add(index);
+            }
+        }
+        public static YamlNode ChildrenByKey(this YamlMappingNode node, string key)
+        {
+            return node.Children[new YamlScalarNode(key)];
+            /*
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                var cChild = node.Children[i];
+                if (key == ((YamlScalarNode)cChild.Key).Value)
+                {
+                    return cChild.Value;
+                }
+            }
+            return null;
+            */
         }
         public static string ReadASCIIString(this BinaryDataReader bdr, int count)
         {

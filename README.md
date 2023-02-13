@@ -18,6 +18,7 @@ If it doesnt automatically install the required Syroot.BinaryData versions:
 
 ### MSBT file format
 * Editing of the messages (including tag editing), attributes and style indices.
+* Experimental yaml format (msyt) for converting between .msbt and .yaml. This makes msbt files humanly readable while being just text(yaml).
 
 ### MSBP file format
 * Editing of the colors, the attribute infos, the control tags, the styles and the source files.

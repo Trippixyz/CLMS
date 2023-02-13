@@ -22,9 +22,9 @@ namespace CLMS
         public WMBP(List<byte> data) : base(data) { }
 
         // Not yet implemented
-        public override byte[] Save()
+        public override byte[] Save(bool optimize = false)
         {
-            return Write();
+            return Write(optimize);
         }
 
 
@@ -186,7 +186,7 @@ namespace CLMS
         #endregion
 
         #region writing code
-        protected override byte[] Write()
+        protected override byte[] Write(bool optimize)
         {
             return new byte[0];
         }

@@ -19,9 +19,9 @@ namespace CLMS
         public MSBF(Stream stm, bool keepOffset) : base(stm, keepOffset) { }
         public MSBF(byte[] data) : base(data) { }
         public MSBF(List<byte> data) : base(data) { }
-        public override byte[] Save()
+        public override byte[] Save(bool optimize = false)
         {
-            return Write();
+            return Write(optimize);
         }
 
 
@@ -224,7 +224,7 @@ namespace CLMS
         #endregion
 
         #region writing code
-        protected override byte[] Write()
+        protected override byte[] Write(bool optimize)
         {
             (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
 

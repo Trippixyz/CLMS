@@ -30,9 +30,9 @@ namespace CLMS
         public MSBP(Stream stm, bool keepOffset) : base(stm, keepOffset) { }
         public MSBP(byte[] data) : base(data) { }
         public MSBP(List<byte> data) : base(data) { }
-        public override byte[] Save()
+        public override byte[] Save(bool optimize = false)
         {
-            return Write();
+            return Write(optimize);
         }
 
         #region Color getting
@@ -268,24 +268,28 @@ namespace CLMS
             if (isCLR1 && isCLB1) // Color
             {
                 HasColors = true;
-                for (uint i = 0; i < clb1.ColorLabels.Length; i++)
+                for (uint i = 0; i < clb1.LabelHolder.Labels.Length; i++)
                 {
-                    Colors.Add(clb1.ColorLabels[i], clr1.Colors[i]);
+                    Colors.Add(clb1.LabelHolder.Labels[i], clr1.Colors[i]);
                 }
+
+                LabelSlotCount = clb1.LabelHolder.SlotNum;
             }
 
             if (isATI2 && isALB1 && isALI2) // Attribute
             {
                 HasAttributeInfos = true;
-                for (uint i = 0; i < alb1.AttributeInfoLabels.Length; i++)
+                for (uint i = 0; i < alb1.LabelHolder.Labels.Length; i++)
                 {
                     if (ati2.AttributeInfos[i].HasList)
                     {
                         ati2.AttributeInfos[i].List = ali2.AttributeInfoLists[ati2.AttributeInfoListIndices[i]];
                     }
 
-                    AttributeInfos.Add(alb1.AttributeInfoLabels[i], ati2.AttributeInfos[i]);
+                    AttributeInfos.Add(alb1.LabelHolder.Labels[i], ati2.AttributeInfos[i]);
                 }
+
+                LabelSlotCount = alb1.LabelHolder.SlotNum;
             }
 
             if (isTGG2 && isTAG2 && isTGP2 && isTGL2) // ControlTag
@@ -330,10 +334,12 @@ namespace CLMS
             if (isSYL3 && isSLB1) // Style
             {
                 HasStyles = true;
-                for (uint i = 0; i < slb1.StyleLabels.Length; i++)
+                for (uint i = 0; i < slb1.LabelHolder.Labels.Length; i++)
                 {
-                    Styles.Add(slb1.StyleLabels[i], syl3.Styles[i]);
+                    Styles.Add(slb1.LabelHolder.Labels[i], syl3.Styles[i]);
                 }
+
+                LabelSlotCount = slb1.LabelHolder.SlotNum;
             }
 
             if (isCTI1) // SourceFile
@@ -360,8 +366,8 @@ namespace CLMS
         private CLB1 ReadCLB1(BinaryDataReader bdr)
         {
             CLB1 result = new();
-
-            result.ColorLabels = ReadLabels(bdr);
+            
+            result.LabelHolder = ReadLabels(bdr);
 
             return result;
         }
@@ -391,7 +397,7 @@ namespace CLMS
         {
             ALB1 result = new();
 
-            result.AttributeInfoLabels = ReadLabels(bdr);
+            result.LabelHolder = ReadLabels(bdr);
 
             return result;
         }
@@ -608,7 +614,7 @@ namespace CLMS
         {
             SLB1 result = new();
 
-            result.StyleLabels = ReadLabels(bdr);
+            result.LabelHolder = ReadLabels(bdr);
 
             return result;
         }
@@ -637,7 +643,7 @@ namespace CLMS
         #endregion
 
         #region writing code
-        protected override byte[] Write()
+        protected override byte[] Write(bool optimize)
         {
             (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
 
@@ -646,7 +652,7 @@ namespace CLMS
                 WriteCLR1(bdw, Colors.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
 
-                WriteCLB1(bdw, Colors.Keys.ToArray(), true);
+                WriteCLB1(bdw, LabelSlotCount, Colors.Keys.ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
 
                 sectionNumber += 2;
@@ -656,7 +662,7 @@ namespace CLMS
             {
                 WriteATI2(bdw, AttributeInfos.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
-                WriteALB1(bdw, AttributeInfos.Keys.ToArray(), true);
+                WriteALB1(bdw, LabelSlotCount, AttributeInfos.Keys.ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
 
                 List<List<string>> attributeListslist = new();
@@ -692,7 +698,7 @@ namespace CLMS
                 WriteSYL3(bdw, Styles.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
 
-                WriteSLB1(bdw, Styles.Keys.ToArray(), true);
+                WriteSLB1(bdw, LabelSlotCount, Styles.Keys.ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
 
                 sectionNumber += 2;
@@ -726,11 +732,11 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteCLB1(BinaryDataWriter bdw, string[] labels, bool optimize)
+        private void WriteCLB1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "CLB1");
 
-            WriteLabels(bdw, labels, optimize);
+            WriteLabels(bdw, slotNum, labels, optimize);
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
@@ -751,11 +757,11 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteALB1(BinaryDataWriter bdw, string[] labels, bool optimize)
+        private void WriteALB1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "ALB1");
 
-            WriteLabels(bdw, labels, optimize);
+            WriteLabels(bdw, slotNum, labels, optimize);
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
@@ -1025,11 +1031,11 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteSLB1(BinaryDataWriter bdw, string[] labels, bool optimize)
+        private void WriteSLB1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "SLB1");
 
-            WriteLabels(bdw, labels, optimize);
+            WriteLabels(bdw, slotNum, labels, optimize);
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
@@ -1064,7 +1070,7 @@ namespace CLMS
         }
         internal class CLB1
         {
-            public string[] ColorLabels;
+            public LabelSection LabelHolder;
         }
         internal class ATI2
         {
@@ -1073,7 +1079,7 @@ namespace CLMS
         }
         internal class ALB1
         {
-            public string[] AttributeInfoLabels;
+            public LabelSection LabelHolder;
         }
         internal class ALI2
         {
@@ -1101,7 +1107,7 @@ namespace CLMS
         }
         internal class SLB1
         {
-            public string[] StyleLabels;
+            public LabelSection LabelHolder;
         }
         internal class CTI1
         {

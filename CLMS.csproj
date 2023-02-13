@@ -5,6 +5,7 @@
   </PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Syroot.IO.BinaryData" Version="2.0.1" />
+		<PackageReference Include="SharpYaml" Version="2.1.0" />
+		<PackageReference Include="Syroot.IO.BinaryData" Version="2.0.2" />
 	</ItemGroup>
 </Project>
