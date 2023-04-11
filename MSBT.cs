@@ -8,9 +8,6 @@ using SharpYaml;
 using SharpYaml.Serialization;
 using static CLMS.LMS;
 using static CLMS.Shared;
-using static CLMS.MSBT;
-using static System.Net.Mime.MediaTypeNames;
-using System.Security.Cryptography;
 
 namespace CLMS
 {
@@ -217,23 +214,14 @@ namespace CLMS
             root.Add("SlotNum", LabelSlotCount.ToString());
             root.Add("Messages", messagesNode);
 
-            var doc = new YamlDocument(root);
-            YamlStream stream = new YamlStream(doc);
-            var buffer = new StringBuilder();
-            using (var writer = new StringWriter(buffer))
-            {
-                stream.Save(writer, true);
-                return writer.ToString();
-            }
+            return root.Print();
         }
         public static MSBT FromYaml(string yaml)
         {
             MSBT msbt = new();
 
-            var stream = new YamlStream();
-            stream.Load(new StringReader(yaml));
-            var mapping = (YamlMappingNode)stream.Documents[0].RootNode;
-            foreach (var rootChild in mapping.Children)
+            YamlMappingNode root = LoadYamlDocument(yaml);
+            foreach (var rootChild in root.Children)
             {
                 var key = ((YamlScalarNode)rootChild.Key).Value;
                 var value = rootChild.Value.ToString();
@@ -270,6 +258,7 @@ namespace CLMS
                     case "SlotNum":
                         msbt.LabelSlotCount = uint.Parse(value);
                         break;
+
                     case "Messages":
                         foreach (var messageChild in ((YamlMappingNode)rootChild.Value).Children)
                         {
