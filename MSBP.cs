@@ -1,6 +1,8 @@
-﻿using Syroot.BinaryData;
+﻿using SharpYaml.Serialization;
+using Syroot.BinaryData;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -10,7 +12,7 @@ using static CLMS.Shared;
 
 namespace CLMS
 {
-    public class MSBP : LMSBase
+    public class MSBP : LMSBase, IYaml<MSBP>
     {
         // specific
         public Dictionary<string, Color> Colors = new();
@@ -18,12 +20,6 @@ namespace CLMS
         public Dictionary<ushort, ControlTagGroup> ControlTags = new();
         public Dictionary<string, Style> Styles = new();
         public List<string> SourceFiles = new();
-
-        public bool HasColors = false;
-        public bool HasAttributeInfos = false;
-        public bool HasControlTags = false;
-        public bool HasStyles = false;
-        public bool HasSourceFiles = false;
 
         public MSBP() : base(FileType.MSBP) { }
         public MSBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.MSBP) { }
@@ -34,6 +30,299 @@ namespace CLMS
         {
             return Write(optimize);
         }
+
+        #region yaml
+        public string ToYaml()
+        {
+            YamlMappingNode root = new();
+
+            string encoding = "";
+            switch (EncodingType)
+            {
+                case EncodingType.UTF8: encoding = "UTF8"; break;
+                case EncodingType.UTF16: encoding = "UTF16"; break;
+                case EncodingType.UTF32: encoding = "UTF32"; break;
+            }
+
+            root.Add("Version", VersionNumber.ToString());
+            root.Add("IsBigEndian", (ByteOrder == ByteOrder.BigEndian ? true : false).ToString());
+            root.Add("Encoding", encoding);
+            root.Add("SlotNum", LabelSlotCount.ToString());
+
+            if (Colors != null)
+            {
+                YamlMappingNode colorsNode = new();
+                foreach (var color in Colors)
+                {
+                    Color colorValue = color.Value;
+                    string hex = $"#{colorValue.A:X2}{colorValue.R:X2}{colorValue.G:X2}{colorValue.B:X2}";
+                    colorsNode.Add(color.Key, hex);
+                }
+
+                root.Add("Colors", colorsNode);
+            }
+            if (AttributeInfos != null)
+            {
+                YamlMappingNode attributeInfosNode = new();
+                foreach (var attribute in AttributeInfos)
+                {
+                    YamlMappingNode attributeInfoNode = new();
+
+                    if (attribute.Value.HasList)
+                    {
+                        YamlSequenceNode attributeListNode = new();
+                        foreach (var attributeListEntry in attribute.Value.List)
+                        {
+                            attributeListNode.Add(attributeListEntry);
+                        }
+                        attributeInfoNode.Add("List", attributeListNode);
+                    }
+                    else
+                    {
+                        attributeInfoNode.Add("Type", attribute.Value.Type.ToString());
+                    }
+
+                    attributeInfoNode.Add("Offset", attribute.Value.Offset.ToString());
+
+                    attributeInfosNode.Add(attribute.Key, attributeInfoNode);
+                }
+
+                root.Add("AttributeInfos", attributeInfosNode);
+            }
+            if (ControlTags != null)
+            {
+                YamlMappingNode controlTagsNode = new();
+                foreach (var controlTag in ControlTags)
+                {
+                    YamlMappingNode controlTagNode = new();
+                    controlTagNode.Add("Name", controlTag.Value.Name);
+
+                    YamlMappingNode controlTagTypesNode = new();
+                    foreach (var controlTagType in controlTag.Value.ControlTagTypes)
+                    {
+                        YamlMappingNode controlTagTypeNode = new();
+                        foreach (var controlTagParameter in controlTagType.ControlTagParameters)
+                        {
+                            YamlMappingNode controlTagParameterNode = new();
+                            if (controlTagParameter.HasList)
+                            {
+                                YamlSequenceNode controlTagParameterListNode = new();
+                                foreach (string listEntry in controlTagParameter.List)
+                                {
+                                    controlTagParameterListNode.Add(listEntry);
+                                }
+                                controlTagParameterNode.Add("List", controlTagParameterListNode);
+                            }
+                            else
+                            {
+                                controlTagParameterNode.Add("Type", controlTagParameter.Type.ToString());
+                            }
+                            controlTagTypeNode.Add(controlTagParameter.Name, controlTagParameterNode);
+                        }
+
+                        controlTagTypesNode.Add(controlTagType.Name, controlTagTypeNode);
+                    }
+
+                    controlTagNode.Add("TagTypes", controlTagTypesNode);
+                    controlTagsNode.Add(controlTag.Key.ToString(), controlTagNode);
+                }
+
+                root.Add("TagGroups", controlTagsNode);
+            }
+            if (Styles != null)
+            {
+                YamlMappingNode stylesNode = new();
+                foreach (var style in Styles)
+                {
+                    YamlMappingNode styleNode = new();
+                    styleNode.Add("RegionWidth", style.Value.RegionWidth.ToString());
+                    styleNode.Add("LineNumber", style.Value.LineNumber.ToString());
+                    styleNode.Add("FontIndex", style.Value.FontIndex.ToString());
+                    styleNode.Add("BaseColorIndex", style.Value.BaseColorIndex.ToString());
+
+                    stylesNode.Add(style.Key, styleNode);
+                }
+
+                root.Add("Styles", stylesNode);
+            }
+            if (SourceFiles != null)
+            {
+                YamlSequenceNode sourceFileNode = new();
+                foreach (var sourceFile in SourceFiles)
+                {
+                    sourceFileNode.Add(sourceFile);
+                }
+
+                root.Add("SourceFiles", sourceFileNode);
+            }
+
+            return root.Print();
+        }
+        public static MSBP FromYaml(string yaml)
+        {
+            MSBP msbp = new();
+
+            msbp.Colors = null;
+            msbp.AttributeInfos = null;
+            msbp.ControlTags = null;
+            msbp.Styles = null;
+            msbp.SourceFiles = null;
+
+            YamlMappingNode root = LoadYamlDocument(yaml);
+            foreach (var rootChild in root.Children)
+            {
+                var key = ((YamlScalarNode)rootChild.Key).Value;
+                var value = rootChild.Value.ToString();
+
+                switch (key)
+                {
+                    case "Version":
+                        msbp.VersionNumber = byte.Parse(value);
+                        break;
+                    case "IsBigEndian":
+                        msbp.ByteOrder = bool.Parse(value) ? ByteOrder.BigEndian : ByteOrder.LittleEndian;
+                        break;
+                    case "Encoding":
+                        switch (value)
+                        {
+                            case "UTF8": msbp.EncodingType = EncodingType.UTF8; break;
+                            case "UTF16": msbp.EncodingType = EncodingType.UTF16; break;
+                            case "UTF32": msbp.EncodingType = EncodingType.UTF32; break;
+                        }
+                        break;
+                    case "SlotNum":
+                        msbp.LabelSlotCount = uint.Parse(value);
+                        break;
+
+                    case "Colors":
+                        msbp.Colors = new();
+
+                        foreach (var colorChild in ((YamlMappingNode)rootChild.Value).Children)
+                        {
+                            msbp.Colors.Add(colorChild.Key.ToString(), ColorTranslator.FromHtml(colorChild.Value.ToString()));
+                        }
+                        break;
+                    case "AttributeInfos":
+                        msbp.AttributeInfos = new();
+
+                        foreach (var attributeChild in ((YamlMappingNode)rootChild.Value).Children)
+                        {
+                            var attributeNode = (YamlMappingNode)attributeChild.Value;
+
+                            byte type = 0;
+                            if (attributeNode.ContainsKeyString("Type"))
+                            {
+                                type = Convert.ToByte(attributeNode.ChildrenByKey("Type").ToString());
+                            }
+                            else
+                            {
+                                type = 9;
+                            }
+
+                            AttributeInfo attributeInfo = new(type, Convert.ToUInt32(attributeNode.ChildrenByKey("Offset").ToString()));
+
+                            if (attributeNode.ContainsKeyString("List"))
+                            {
+                                var attributeListNode = (YamlSequenceNode)attributeNode.ChildrenByKey("List");
+
+                                foreach (var attributeListNodeItem in attributeListNode.Children)
+                                {
+                                    attributeInfo.List.Add(attributeListNodeItem.ToString());
+                                }
+                            }
+
+                            msbp.AttributeInfos.Add(attributeChild.Key.ToString(), attributeInfo);
+                        }
+                        break;
+                    case "TagGroups":
+                        msbp.ControlTags = new();
+
+                        foreach (var controlTagsChild in ((YamlMappingNode)rootChild.Value).Children)
+                        {
+                            var controlTagNode = (YamlMappingNode)controlTagsChild.Value;
+
+                            ControlTagGroup controlTagGroup = new();
+                            controlTagGroup.Name = controlTagNode.ChildrenByKey("Name").ToString();
+
+                            if (controlTagNode.ContainsKeyString("TagTypes"))
+                            {
+                                var controlTagTypesNode = (YamlMappingNode)controlTagNode.ChildrenByKey("TagTypes");
+
+                                foreach (var controlTagTypesChild in controlTagTypesNode.Children)
+                                {
+                                    var controlTagTypeNode = (YamlMappingNode)controlTagTypesChild.Value;
+
+                                    ControlTagType controlTagType = new();
+                                    controlTagType.Name = controlTagTypesChild.Key.ToString();
+
+                                    foreach (var controlTagTypeChild in controlTagTypeNode.Children)
+                                    {
+                                        var controlTagParameterNode = (YamlMappingNode)controlTagTypeChild.Value;
+
+                                        byte type = 0;
+                                        if (controlTagParameterNode.ContainsKeyString("Type"))
+                                        {
+                                            type = Convert.ToByte(controlTagParameterNode.ChildrenByKey("Type").ToString());
+                                        }
+                                        else
+                                        {
+                                            type = 9;
+                                        }
+
+                                        ControlTagParameter controlTagParameter = new(type);
+                                        controlTagParameter.Name = controlTagTypeChild.Key.ToString();
+
+                                        if (controlTagParameterNode.ContainsKeyString("List"))
+                                        {
+                                            var attributeListNode = (YamlSequenceNode)controlTagParameterNode.ChildrenByKey("List");
+
+                                            foreach (var attributeListNodeItem in attributeListNode.Children)
+                                            {
+                                                controlTagParameter.List.Add(attributeListNodeItem.ToString());
+                                            }
+                                        }
+
+                                        controlTagType.ControlTagParameters.Add(controlTagParameter);
+                                    }
+
+                                    controlTagGroup.ControlTagTypes.Add(controlTagType);
+                                }
+                            }
+
+                            msbp.ControlTags.Add(Convert.ToUInt16(controlTagsChild.Key.ToString()), controlTagGroup);
+                        }
+                        break;
+                    case "Styles":
+                        msbp.Styles = new();
+
+                        foreach (var stylesChild in ((YamlMappingNode)rootChild.Value).Children)
+                        {
+                            var styleNode = (YamlMappingNode)stylesChild.Value;
+
+                            Style style = new(
+                                Convert.ToInt32(styleNode.ChildrenByKey("RegionWidth").ToString()),
+                                Convert.ToInt32(styleNode.ChildrenByKey("LineNumber").ToString()),
+                                Convert.ToInt32(styleNode.ChildrenByKey("FontIndex").ToString()),
+                                Convert.ToInt32(styleNode.ChildrenByKey("BaseColorIndex").ToString())
+                            );
+
+                            msbp.Styles.Add(stylesChild.Key.ToString(), style);
+                        }
+                        break;
+                    case "SourceFiles":
+                        msbp.SourceFiles = new();
+
+                        foreach (var sourceFilesChild in ((YamlSequenceNode)rootChild.Value).Children)
+                        {
+                            msbp.SourceFiles.Add(sourceFilesChild.ToString());
+                        }
+                        break;
+                }
+            }
+
+            return msbp;
+        }
+        #endregion
 
         #region Color getting
         public Color TryGetColorByKey(string key)
@@ -267,7 +556,6 @@ namespace CLMS
             // beginning of parsing buffers into class items
             if (isCLR1 && isCLB1) // Color
             {
-                HasColors = true;
                 for (uint i = 0; i < clb1.LabelHolder.Labels.Length; i++)
                 {
                     Colors.Add(clb1.LabelHolder.Labels[i], clr1.Colors[i]);
@@ -275,10 +563,10 @@ namespace CLMS
 
                 LabelSlotCount = clb1.LabelHolder.SlotNum;
             }
+            else { Colors = null; }
 
             if (isATI2 && isALB1 && isALI2) // Attribute
             {
-                HasAttributeInfos = true;
                 for (uint i = 0; i < alb1.LabelHolder.Labels.Length; i++)
                 {
                     if (ati2.AttributeInfos[i].HasList)
@@ -291,10 +579,10 @@ namespace CLMS
 
                 LabelSlotCount = alb1.LabelHolder.SlotNum;
             }
+            else { AttributeInfos = null; }
 
             if (isTGG2 && isTAG2 && isTGP2 && isTGL2) // ControlTag
             {
-                HasControlTags = true;
                 for (int i = 0; i < tgg2.ControlTagGroups.Count; i++)
                 {
                     //Console.ForegroundColor = ConsoleColor.Red;
@@ -330,10 +618,10 @@ namespace CLMS
                     //Console.WriteLine();
                 }
             }
+            else { ControlTags = null; }
 
             if (isSYL3 && isSLB1) // Style
             {
-                HasStyles = true;
                 for (uint i = 0; i < slb1.LabelHolder.Labels.Length; i++)
                 {
                     Styles.Add(slb1.LabelHolder.Labels[i], syl3.Styles[i]);
@@ -341,12 +629,13 @@ namespace CLMS
 
                 LabelSlotCount = slb1.LabelHolder.SlotNum;
             }
+            else { Styles = null; }
 
             if (isCTI1) // SourceFile
             {
-                HasSourceFiles = true;
                 SourceFiles = cti1.SourceFiles.ToList();
             }
+            else { SourceFiles = null; }
         }
         private CLR1 ReadCLR1(BinaryDataReader bdr)
         {
@@ -647,7 +936,7 @@ namespace CLMS
         {
             (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
 
-            if (HasColors)
+            if (Colors != null)
             {
                 WriteCLR1(bdw, Colors.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
@@ -658,7 +947,7 @@ namespace CLMS
                 sectionNumber += 2;
             }
 
-            if (HasAttributeInfos)
+            if (AttributeInfos != null)
             {
                 WriteATI2(bdw, AttributeInfos.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
@@ -676,7 +965,7 @@ namespace CLMS
                 sectionNumber += 3;
             }
 
-            if (HasControlTags)
+            if (ControlTags != null)
             {
                 WriteTGG2(bdw, ControlTags);
                 bdw.Align(0x10, 0xAB);
@@ -693,7 +982,7 @@ namespace CLMS
                 sectionNumber += 4;
             }
 
-            if (HasStyles)
+            if (Styles != null)
             {
                 WriteSYL3(bdw, Styles.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
@@ -704,7 +993,7 @@ namespace CLMS
                 sectionNumber += 2;
             }
 
-            if (HasSourceFiles)
+            if (SourceFiles != null)
             {
                 WriteCTI1(bdw, SourceFiles.ToArray());
                 bdw.Align(0x10, 0xAB);
