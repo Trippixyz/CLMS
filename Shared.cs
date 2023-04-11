@@ -128,7 +128,11 @@ namespace CLMS
         }
         public static YamlNode ChildrenByKey(this YamlMappingNode node, string key)
         {
-            return node.Children[new YamlScalarNode(key)];
+            if (node.Children.ContainsKey(new YamlScalarNode(key)))
+            {
+                return node.Children[new YamlScalarNode(key)];
+            }
+            return null;
             /*
             for (int i = 0; i < node.Children.Count; i++)
             {
@@ -141,6 +145,28 @@ namespace CLMS
             return null;
             */
         }
+        public static bool ContainsKeyString(this YamlMappingNode node, string key)
+        {
+            return node.Children.ContainsKey(new YamlScalarNode(key));
+        }
+        public static string Print(this YamlMappingNode node)
+        {
+            var doc = new YamlDocument(node);
+            YamlStream stream = new YamlStream(doc);
+            var buffer = new StringBuilder();
+            using (var writer = new StringWriter(buffer))
+            {
+                stream.Save(writer, true);
+                return writer.ToString();
+            }
+        }
+        public static YamlMappingNode LoadYamlDocument(string yaml)
+        {
+            var stream = new YamlStream();
+            stream.Load(new StringReader(yaml));
+            return (YamlMappingNode)stream.Documents[0].RootNode;
+        }
+
         public static string ReadASCIIString(this BinaryDataReader bdr, int count)
         {
             return Encoding.ASCII.GetString(bdr.ReadBytes(count));
