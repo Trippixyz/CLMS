@@ -1,7 +1,7 @@
 # CLMS
 > <b>C</b>ool <b>L</b>ibrary <b>M</b>essage <b>S</b>tudio recreation
 
-An attempt to build a fully working LMS library written in c#.
+An attempt to build a fully working LMS library written in C#.
 
 ## Requirements
 * NET 5.0
@@ -18,10 +18,11 @@ If it doesnt automatically install the required Syroot.BinaryData versions:
 
 ### MSBT file format
 * Editing of the messages (including tag editing), attributes and style indices.
-* Experimental yaml format (msyt) for converting between .msbt and .yaml. This makes msbt files humanly readable while being just text(yaml).
+* Practically full yaml support. (ATO1 Section not yet included)
 
 ### MSBP file format
 * Editing of the colors, the attribute infos, the control tags, the styles and the source files.
+* Full yaml support.
 
 ### MSBF file format
 * Reading of the fLow charts and the refernce labels.
@@ -34,4 +35,4 @@ If it doesnt automatically install the required Syroot.BinaryData versions:
 * [KillzXGaming](https://github.com/KillzXGaming): Implementation of other msbt types
 * [Kinnay](https://github.com/kinnay): [Reversing most of the files](https://github.com/Kinnay/Nintendo-File-Formats/wiki/LMS-File-Format)
 * Ray Koopa: Syroot Library Developer
-* [Jenrikku](https://github.com/Jenrikku): Help with setting up a c# library, Motivation on pushing this to Github finally
+* [Jenrikku](https://github.com/Jenrikku): Help with setting up a C# library, Motivation on pushing this to Github finally
