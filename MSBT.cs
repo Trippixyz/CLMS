@@ -374,6 +374,12 @@ namespace CLMS
                                         {
                                             string tagId = contentsValue.Substring(i + 1, contentsValue.IndexOf('>', i + 1) - i - 1);
 
+                                            // proper exception handling yay :)
+                                            if (!tags.ContainsKey(tagId))
+                                            {
+                                                throw new KeyNotFoundException($"In line {tagsNode.Start.Line}: Tag named {tagId} is not in the Tags Dictionary!");
+                                            }
+
                                             if (stringBuf.Length > 0)
                                             {
                                                 parameters.Add(stringBuf);
