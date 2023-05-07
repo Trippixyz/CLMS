@@ -792,7 +792,7 @@ namespace CLMS
                         Array.Reverse(cAttributeBytes);
                     }
 
-                    uint cStringOffset = BitConverter.ToUInt32(cAttributeBytes[(cAttributeBytes.Length - 4)..cAttributeBytes.Length]);
+                    uint cStringOffset = BitConverter.ToUInt32(cAttributeBytes[0..4]); // BitConverter.ToUInt32(cAttributeBytes[(cAttributeBytes.Length - 4)..cAttributeBytes.Length]);
 
                     bdr.Position = startPosition + cStringOffset;
 
