@@ -302,6 +302,12 @@ namespace CLMS
             }
             else // no implementation yet sry :/  (WHO WOULD NOT OPTIMIZE...) (ok now its there)
             {
+                // hashSlotNum cannot be 0
+                if (hashSlotNum == 0)
+                {
+                    throw new("SlotNum cannot be 0!");
+                }
+
                 bdw.Write(hashSlotNum);
 
                 Dictionary<uint, List<string>> result = new();
