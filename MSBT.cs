@@ -120,7 +120,7 @@ namespace CLMS
                 YamlMappingNode messageNode = new();
                 YamlMappingNode tagsNode = new();
 
-                object[] messageParams = item.Value.ToParams();
+                object[] messageParams = item.Value.Contents.ToArray();
                 string text = "";
 
                 int tagCount = 0;
@@ -130,9 +130,10 @@ namespace CLMS
                     {
                         text += ((string)cParam).Replace("<", "\\<");
                     }
-                    else
+                    if (cParam is Tag)
                     {
                         Tag tag = (Tag)cParam;
+
                         text += $"<Tag_{tagCount}>";
 
                         YamlMappingNode tagNode = new();
@@ -141,15 +142,18 @@ namespace CLMS
                         tagNode.Add("Type", tag.Type.ToString());
                         tagNode.Add("Parameters", ByteArrayToString(tag.Parameters, true));
 
-                        if (tag.HasRegionEnd)
-                        {
-                            tagNode.Add("RegionSize", tag.RegionSize.ToString());
-                            tagNode.Add("RegionEndMarkerBytes", ByteArrayToString(tag.RegionEndMarkerBytes, true));
-                            //text += $"<Region({tag.RegionSize})>{ByteArrayToString(tag.Parameters, true)}</Region>";
-                        }
-
                         tagsNode.Add($"Tag_{tagCount}", tagNode);
                         tagCount++;
+                    }
+                    if (cParam is TagEnd)
+                    {
+                        TagEnd tagEnd = (TagEnd)cParam;
+
+                        text += $"</Tag_{tagCount - 1}>";
+
+                        YamlMappingNode tagNode = (YamlMappingNode)tagsNode.ChildrenByKey($"Tag_{tagCount - 1}");
+
+                        tagNode.Add("RegionEndMarkerBytes", ByteArrayToString(tagEnd.RegionEndMarkerBytes, true));
                     }
                 }
 
@@ -306,13 +310,14 @@ namespace CLMS
 
                                 if (tagsNode != null)
                                 {
-                                    Dictionary<string, Tag> tags = new();
+                                    Dictionary<string, (Tag tag, TagEnd tagEnd)> tags = new();
                                     foreach (var tagNode in ((YamlMappingNode)tagsNode).Children)
                                     {
                                         var tagKey = ((YamlScalarNode)tagNode.Key).Value;
                                         var tagValue = (YamlMappingNode)tagNode.Value;
 
                                         Tag tag = new();
+                                        TagEnd tagEnd = null;
 
                                         foreach (var tagChild in tagValue)
                                         {
@@ -330,18 +335,13 @@ namespace CLMS
                                                 case "Parameters":
                                                     tag.Parameters = StringToByteArray(tagChildValue);
                                                     break;
-                                                case "RegionSize":
-                                                    tag.HasRegionEnd = true;
-                                                    tag.RegionSize = uint.Parse(tagChildValue);
-                                                    break;
                                                 case "RegionEndMarkerBytes":
-                                                    tag.HasRegionEnd = true;
-                                                    tag.RegionEndMarkerBytes = StringToByteArray(tagChildValue);
+                                                    tagEnd = new(StringToByteArray(tagChildValue));
                                                     break;
                                             }
                                         }
 
-                                        tags.Add(tagKey, tag);
+                                        tags.Add(tagKey, (tag, tagEnd));
                                     }
 
                                     string contentsValue = contentsNode.ToString();
@@ -354,19 +354,23 @@ namespace CLMS
                                     while (i < contentsValue.Length)
                                     {
                                         bool processTag = false;
+                                        bool processTagEnd = false;
                                         if (contentsValue[i] == '<')
                                         {
-                                            if (lastChar == '\0')
-                                            {
-                                                processTag = true;
-                                            }
-                                            else if (lastChar == '\\')
+                                            if (lastChar == '\\')
                                             {
                                                 stringBuf = stringBuf.Remove(stringBuf.Length - 1);
                                             }
                                             else
                                             {
-                                                processTag = true;
+                                                if (contentsValue[i + 1] == '/')
+                                                {
+                                                    processTagEnd = true;
+                                                }
+                                                else
+                                                {
+                                                    processTag = true;
+                                                }
                                             }
                                         }
 
@@ -385,10 +389,30 @@ namespace CLMS
                                                 parameters.Add(stringBuf);
                                                 stringBuf = "";
                                             }
-                                            parameters.Add(tags[tagId]);
+                                            parameters.Add(tags[tagId].tag);
                                             lastChar = '\0';
 
                                             i += 2 + tagId.Length;
+                                        }
+                                        else if (processTagEnd)
+                                        {
+                                            string tagId = contentsValue.Substring(i + 2, contentsValue.IndexOf('>', i + 2) - i - 2);
+
+                                            // proper exception handling yay :)
+                                            if (!tags.ContainsKey(tagId))
+                                            {
+                                                throw new KeyNotFoundException($"In line {tagsNode.Start.Line}: TagEnd named {tagId} is not in the Tags Dictionary!");
+                                            }
+
+                                            if (stringBuf.Length > 0)
+                                            {
+                                                parameters.Add(stringBuf);
+                                                stringBuf = "";
+                                            }
+                                            parameters.Add(tags[tagId].tagEnd);
+                                            lastChar = '\0';
+
+                                            i += 3 + tagId.Length;
                                         }
                                         else
                                         {
@@ -402,12 +426,12 @@ namespace CLMS
                                         parameters.Add(stringBuf);
                                     }
 
-                                    message.Edit(parameters.ToArray());
+                                    message.Contents = parameters;
                                 }
                             }
                             else
                             {
-                                message.RawString = contentsNode.ToString().Replace("\\<", "<");
+                                message.Contents.Add(contentsNode.ToString().Replace("\\<", "<"));
                             }
 
                             msbt.Messages.Add(messageChild.Key.ToString(), message);
@@ -477,7 +501,7 @@ namespace CLMS
         {
             try
             {
-                return Messages[key].Tags.Count;
+                return Messages[key].TagCount;
             }
             catch
             {
@@ -491,46 +515,6 @@ namespace CLMS
         public string GetKeyByIndex(int index)
         {
             return Messages.Keys.ToArray()[index];
-        }
-        public string[] TryGetKeysByMessageString(string messageString)
-        {
-            try
-            {
-                string[] keys = Messages.Keys.ToArray();
-                List<string> resultList = new List<string>();
-                for (int i = 0; i < Messages.Count; i++)
-                {
-                    if (Messages[keys[i]].RawString == messageString)
-                    {
-                        resultList.Add(keys[i]);
-                    }
-                }
-                return resultList.ToArray();
-            }
-            catch
-            {
-                throw;
-            }
-        }
-        public string[] TryGetKeysByPartiallyMatchingMessageString(string messageString)
-        {
-            try
-            {
-                string[] keys = Messages.Keys.ToArray();
-                List<string> resultList = new List<string>();
-                for (int i = 0; i < Messages.Count; i++)
-                {
-                    if (Messages[keys[i]].RawString.Contains(messageString))
-                    {
-                        resultList.Add(keys[i]);
-                    }
-                }
-                return resultList.ToArray();
-            }
-            catch
-            {
-                throw;
-            }
         }
         #endregion
 
@@ -876,25 +860,31 @@ namespace CLMS
                     char cChar = bdr.ReadChar();
                     if (cChar == 0x0E)
                     {
+                        cMessage.Contents.Add(stringBuf);
+
                         Tag cTag = new(bdr.ReadUInt16(), bdr.ReadUInt16());
                         ushort cTagSize = bdr.ReadUInt16();
 
                         cTag.Parameters = bdr.ReadBytes(cTagSize);
 
-                        cMessage.Tags.Add((j, cTag));
+                        cMessage.Contents.Add(cTag);
+
+                        stringBuf = string.Empty;
                     }
                     else if (cChar == 0x0F) // attempt to implement region tags
                     {
-                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.HasRegionEnd = true;
-                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionSize = j - cMessage.Tags[cMessage.Tags.Count - 1].Index;
-                        cMessage.Tags[cMessage.Tags.Count - 1].Tag.RegionEndMarkerBytes = bdr.ReadBytes(4);
+                        cMessage.Contents.Add(stringBuf);
 
-                        //Console.WriteLine("0x0F:");
-                        //Console.WriteLine("Region Size: " + cMessage.tags[cMessage.tags.Count - 1].regionSize);
-                        //Console.WriteLine(bdr.Position);
+                        TagEnd cTagEnd = new(bdr.ReadBytes(4));
+
+                        cMessage.Contents.Add(cTagEnd);
+
+                        stringBuf = string.Empty;
                     }
                     else if (cChar == 0x00)
                     {
+                        cMessage.Contents.Add(stringBuf);
+
                         isNullChar = true;
                     }
                     else
@@ -903,7 +893,6 @@ namespace CLMS
                         j++;
                     }
                 }
-                cMessage.RawString = stringBuf;
 
                 messagesList.Add(cMessage);
                 bdr.Position = positionBuf;
@@ -1084,38 +1073,30 @@ namespace CLMS
                 long cMessageOffset = bdw.Position;
                 bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cMessageOffset - startPosition));
 
-                uint cMessagePosition = 0;
-                for (int j = 0; j < messages[i].Tags.Count; j++)
+                foreach (object cParam in messages[i].Contents)
                 {
-                    (uint cIndex, Tag cTag) = messages[i].Tags[j];
-                    string cMessageSubString = messages[i].RawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
-
-                    cMessagePosition = cIndex;
-
-                    bdw.Write(cMessageSubString, BinaryStringFormat.NoPrefixOrTermination);
-
-                    bdw.WriteChar(0x0E);
-                    bdw.Write(cTag.Group);
-                    bdw.Write(cTag.Type);
-                    bdw.Write((ushort)cTag.Parameters.Length);
-                    bdw.Write(cTag.Parameters);
-
-                    // writing the region section if the tag has one
-                    if (cTag.HasRegionEnd)
+                    if (cParam is string)
                     {
-                        string cTagRegionSubString = messages[i].RawString.Substring((int)cMessagePosition, (int)cTag.RegionSize);
+                        bdw.Write((string)cParam, BinaryStringFormat.NoPrefixOrTermination);
+                    }
+                    if (cParam is Tag)
+                    {
+                        Tag cTag = (Tag)cParam;
 
-                        cMessagePosition += cTag.RegionSize;
+                        bdw.WriteChar(0x0E);
+                        bdw.Write(cTag.Group);
+                        bdw.Write(cTag.Type);
+                        bdw.Write((ushort)cTag.Parameters.Length);
+                        bdw.Write(cTag.Parameters);
+                    }
+                    if (cParam is TagEnd)
+                    {
+                        TagEnd cTagEnd = (TagEnd)cParam;
 
-                        bdw.Write(cTagRegionSubString, BinaryStringFormat.NoPrefixOrTermination);
                         bdw.WriteChar(0x0F);
-                        bdw.Write(cTag.RegionEndMarkerBytes);
+                        bdw.Write(cTagEnd.RegionEndMarkerBytes);
                     }
                 }
-                // if the last tag isnt the actual end of the message (which is common)
-                string LastPartOfMessage = messages[i].RawString.Substring((int)(cMessagePosition));
-
-                bdw.Write(LastPartOfMessage, BinaryStringFormat.NoPrefixOrTermination);
 
                 // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                 bdw.WriteChar(0x00);
