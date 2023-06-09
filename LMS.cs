@@ -9,6 +9,7 @@ using System.Data;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection.Emit;
 using System.Xml.Linq;
+using SharpYaml.Serialization;
 
 namespace CLMS
 {
@@ -105,6 +106,10 @@ namespace CLMS
             Header.FileType = aFileType;
             Header.ByteOrder = aByteOrder;
             Header.VersionNumber = aVersionNumber;
+
+            // prevent it from not saving
+            LabelSlotCount = 1;
+
             Encoding = Encoding.Unicode;
         }
         public LMSBase(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader, FileType aFileType, byte aVersionNumber = 3)
@@ -416,16 +421,165 @@ namespace CLMS
     public class Message
     {
         /// <summary>
-        /// Contains the raw message string. Tags are not included.
+        /// The Contents of a Message.
+        /// the object either is a System.String, a Tag or a TagEnd.
         /// </summary>
-        public string RawString = "";
+        public List<object> Contents = new();
+
+        public string Text
+        {
+            get
+            {
+                string text = "";
+
+                int tagCount = 0;
+                foreach (var cParam in Contents)
+                {
+                    if (cParam is string)
+                    {
+                        text += ((string)cParam).Replace("<", "\\<");
+                    }
+                    if (cParam is Tag)
+                    {
+                        Tag tag = (Tag)cParam;
+
+                        text += $"<Tag_{tagCount}>";
+
+                        tagCount++;
+                    }
+                    if (cParam is TagEnd)
+                    {
+                        TagEnd tagEnd = (TagEnd)cParam;
+
+                        text += $"</Tag_{tagCount - 1}>";
+                    }
+                }
+
+                return text;
+            }
+            set
+            {
+                List<object> contents = new();
+
+                string stringBuf = "";
+                char lastChar = '\0';
+                int i = 0;
+                while (i < value.Length)
+                {
+                    bool processTag = false;
+                    bool processTagEnd = false;
+                    if (value[i] == '<')
+                    {
+                        if (lastChar == '\\')
+                        {
+                            stringBuf = stringBuf.Remove(stringBuf.Length - 1);
+                        }
+                        else
+                        {
+                            if (value[i + 1] == '/')
+                            {
+                                processTagEnd = true;
+                            }
+                            else
+                            {
+                                processTag = true;
+                            }
+                        }
+                    }
+
+                    if (processTag)
+                    {
+                        string tagIdStr = value.Substring(i + 5, value.IndexOf('>', i + 5) - i - 5);
+                        int tagId = Convert.ToInt32(tagIdStr);
+
+                        // proper exception handling yay :)
+                        if (tagId >= TagCount)
+                        {
+                            throw new KeyNotFoundException($"Tag {tagId} is not in the Tags!");
+                        }
+
+                        if (stringBuf.Length > 0)
+                        {
+                            contents.Add(stringBuf);
+                            stringBuf = "";
+                        }
+                        contents.Add(GetTagByIndex(tagId));
+                        lastChar = '\0';
+
+                        i += 6 + tagIdStr.Length;
+                    }
+                    else if (processTagEnd)
+                    {
+                        string tagIdStr = value.Substring(i + 6, value.IndexOf('>', i + 6) - i - 6);
+                        int tagId = Convert.ToInt32(tagIdStr);
+
+                        // proper exception handling yay :)
+                        if (tagId >= TagEndCount)
+                        {
+                            throw new KeyNotFoundException($"TagEnd {tagId} is not in the TagEnds!");
+                        }
+
+                        if (stringBuf.Length > 0)
+                        {
+                            contents.Add(stringBuf);
+                            stringBuf = "";
+                        }
+                        contents.Add(GetTagEndByIndex(tagId));
+                        lastChar = '\0';
+
+                        i += 7 + tagIdStr.Length;
+                    }
+                    else
+                    {
+                        stringBuf += value[i];
+                        lastChar = value[i];
+                        i++;
+                    }
+                }
+                if (stringBuf.Length > 0)
+                {
+                    contents.Add(stringBuf);
+                }
+
+                Contents = contents;
+            }
+        }
+
+        public long TagCount
+        {
+            get
+            {
+                long tagCount = 0;
+                foreach (var param in Contents)
+                {
+                    if (param is Tag)
+                    {
+                        tagCount++;
+                    }
+                }
+
+                return tagCount;
+            }
+        }
+        public long TagEndCount
+        {
+            get
+            {
+                long tagEndCount = 0;
+                foreach (var param in Contents)
+                {
+                    if (param is TagEnd)
+                    {
+                        tagEndCount++;
+                    }
+                }
+
+                return tagEndCount;
+            }
+        }
+
         /// <summary>
-        /// A list of all tags throughout the message. 
-        /// </summary>
-        public List<(uint Index, Tag Tag)> Tags = new();
-        /// <summary>
-        /// The style index into the style table (usually found in the msbp). 
-        /// To check if the msbt has style indices get the "hasStyleIndices" bool from the msbt class header.
+        /// The Index into the style table in the msbp.
         /// </summary>
         public int StyleIndex;
         /// <summary>
@@ -434,99 +588,58 @@ namespace CLMS
         /// </summary>
         public Attribute Attribute;
 
-
         /// <summary>
-        /// Creates the Message through the parameters.
+        /// Creates the Message through the contents.
         /// </summary>
-        /// <param name="parameters">Each parameter either be a System.String or a CLMS.Tag</param>
-        public Message(params object[] parameters)
+        /// <param name="contents">Each parameter either be a System.String or a CLMS.Tag</param>
+        public Message(params object[] contents)
         {
-            Edit(parameters);
+            Edit(contents);
         }
         /// <summary>
-        /// Cleans the RawString and the Tags and sets them through the parameters.
+        /// Cleans the RawString and the Tags and sets them through the contents.
         /// </summary>
-        /// <param name="parameters">Each parameter either be a System.String or a CLMS.Tag</param>
-        public void Edit(params object[] parameters)
+        /// <param name="contents">Each parameter either be a System.String or a CLMS.Tag</param>
+        public void Edit(params object[] contents)
         {
-            Tags.Clear();
-            RawString = string.Empty;
-            foreach (object parameter in parameters)
-            {
-                if (parameter is string)
-                {
-                    RawString += parameter;
-                }
-                else if (parameter is Tag)
-                {
-                    Tag tag = (Tag)parameter;
-                    Tags.Add(((uint)RawString.Length, tag));
-                }
-            }
+            Contents = contents.ToList();
         }
-        /// <paramref name="name"/>
-        /// <summary>
-        /// Splits the 'RawString' by the tags in between it.
-        /// </summary>
-        /// <returns>System.String[]</returns>
-        public string[] SplitByTags()
+
+        public Tag GetTagByIndex(int index)
         {
-            List<uint> indices = new();
-            foreach ((uint Index, Tag Tag) in Tags)
+            int tagId = 0;
+            foreach (object param in Contents)
             {
-                indices.Add(Index);
-            }
-            return RawString.SplitAt(indices.ToArray());
-        }
-        /// <summary>
-        /// Splits the 'rawString' by a specific tagConfig.
-        /// </summary>
-        /// <param name="tagConfig"></param>
-        /// <returns></returns>
-        public string[] SplitByTag(TagConfig tagConfig)
-        {
-            List<uint> indices = new();
-            foreach ((uint Index, Tag Tag) in Tags)
-            {
-                if (tagConfig == Tag)
+                if (param is Tag)
                 {
-                    indices.Add(Index);
+                    if (tagId == index)
+                    {
+                        return (Tag)param;
+                    }
+
+                    tagId++;
                 }
             }
-            return RawString.SplitAt(indices.ToArray());
+
+            return null;
         }
-        /// <summary>
-        /// Converts the Message object to 'params object[]'.
-        /// Each 'object' will either be 'System.String', or 'CLMS.Tag'.
-        /// </summary>
-        /// <returns></returns>
-        public object[] ToParams()
+        public TagEnd GetTagEndByIndex(int index)
         {
-            List<object> parametersList = new();
-            uint cMessagePosition = 0;
-            for (int i = 0; i < Tags.Count; i++)
+            int tagId = 0;
+            foreach (object param in Contents)
             {
-                (uint cIndex, Tag cTag) = Tags[i];
-                string cMessageSubString = RawString.Substring((int)cMessagePosition, (int)(cIndex - cMessagePosition));
-
-                cMessagePosition = cIndex;
-
-                if (cMessageSubString.Length > 0)
+                if (param is TagEnd)
                 {
-                    parametersList.Add(cMessageSubString);
+                    if (tagId == index)
+                    {
+                        return (TagEnd)param;
+                    }
+
+                    tagId++;
                 }
-
-                parametersList.Add(cTag);
             }
 
-            // if the last tag isnt the actual end of the message (which is common)
-            string LastPartOfMessage = RawString.Substring((int)cMessagePosition);
-
-            if (LastPartOfMessage.Length > 0)
-            {
-                parametersList.Add(LastPartOfMessage);
-            }
-            return parametersList.ToArray();
+            return null;
         }
     }
     public class TagConfig
@@ -582,18 +695,15 @@ namespace CLMS
         /// </summary>
         public byte[] Parameters;
 
-        /// <summary>
-        /// Determines whether the tag has a region end or not.
-        /// </summary>
-        public bool HasRegionEnd;
-        /// <summary>
-        /// The size of the region.
-        /// </summary>
-        public uint RegionSize;
-        /// <summary>
-        /// The marker bytes at the end of the region.
-        /// </summary>
-        public byte[] RegionEndMarkerBytes;
+        ///// <summary>
+        ///// Determines whether the tag has a region end or not.
+        ///// </summary>
+        //public bool HasRegionEnd;
+        ///// <summary>
+        ///// The size of the region.
+        ///// </summary>
+        //public uint RegionSize;
+
 
         public Tag()
         {
@@ -616,20 +726,22 @@ namespace CLMS
             Type = aType;
             Parameters = aParameters;
         }
-        public Tag(ushort aGroup, ushort aType, byte[] aParameters, uint aRegionSize)
+    }
+
+    public class TagEnd
+    {
+        /// <summary>
+        /// The marker bytes at the end of the region.
+        /// There is probably more to them than just bytes.
+        /// </summary>
+        public byte[] RegionEndMarkerBytes;
+
+        public TagEnd()
         {
-            Group = aGroup;
-            Type = aType;
-            Parameters = aParameters;
-            RegionSize = aRegionSize;
-            RegionEndMarkerBytes = new byte[] { 0x0F, 0x01, 0x00, 0x10, 0x00 };
+            RegionEndMarkerBytes = new byte[] { 0x01, 0x00, 0x10, 0x00 }; // used to be 0x0F, 0x01, 0x00, 0x10, 0x00
         }
-        public Tag(ushort aGroup, ushort aType, byte[] aParameters, uint aRegionSize, byte[] aRegionEndMarkerBytes)
+        public TagEnd(byte[] aRegionEndMarkerBytes)
         {
-            Group = aGroup;
-            Type = aType;
-            Parameters = aParameters;
-            RegionSize = aRegionSize;
             RegionEndMarkerBytes = aRegionEndMarkerBytes;
         }
     }
