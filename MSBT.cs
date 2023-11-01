@@ -15,7 +15,7 @@ namespace CLMS
     {
         // specific
         public Message this[string key] { get => Messages[key]; set => Messages[key] = value; }
-        public Dictionary<string, Message> Messages = new();
+        public LMSDictionary<Message> Messages = new();
 
         // misc
         public bool UsesMessageID
@@ -31,7 +31,7 @@ namespace CLMS
                 if (value)
                 {
                     bool areKeysParsable = true;
-                    string[] keys = Messages.Keys.ToArray();
+                    string[] keys = Messages.KeysAsLabels().ToArray();
                     for (int i = 0; areKeysParsable && i < keys.Length; i++)
                     {
                         uint ignore;
@@ -134,6 +134,7 @@ namespace CLMS
                     {
                         Tag tag = (Tag)cParam;
 
+                        // TODO: fix this to be /> if there wont be a TagEnd (quite a hard challenge)
                         text += $"<Tag_{tagCount}>";
 
                         YamlMappingNode tagNode = new();
@@ -194,7 +195,7 @@ namespace CLMS
                     messageNode.Add("StyleID", item.Value.StyleIndex.ToString());
                 }
 
-                messagesNode.Add(item.Key, messageNode);
+                messagesNode.Add((string)item.Key, messageNode);
             }
 
             string encoding = "";
@@ -452,7 +453,7 @@ namespace CLMS
 
             for (int i = 0; i < Messages.Count; i++)
             {
-                pairList.Add((Messages.Keys.ToArray()[i], Messages.Values.ToArray()[i]));
+                pairList.Add((Messages.KeysAsLabels().ToArray()[i], Messages.Values.ToArray()[i]));
             }
 
             return pairList.ToArray();
@@ -472,7 +473,7 @@ namespace CLMS
         {
             try
             {
-                string[] keys = Messages.Keys.ToArray();
+                string[] keys = Messages.KeysAsLabels().ToArray();
                 List<Message> resultList = new List<Message>();
                 for (uint i = 0; i < Messages.Count; i++)
                 {
@@ -494,7 +495,7 @@ namespace CLMS
         }
         public (string, Message) GetPairByIndex(int index)
         {
-            string key = Messages.Keys.ToArray()[index];
+            string key = Messages.KeysAsLabels().ToArray()[index];
             return (key, Messages[key]);
         }
         public long TryGetTagCountOfMessageByKey(string key)
@@ -510,11 +511,11 @@ namespace CLMS
         }
         public string[] GetKeys()
         {
-            return Messages.Keys.ToArray();
+            return Messages.KeysAsLabels().ToArray();
         }
         public string GetKeyByIndex(int index)
         {
-            return Messages.Keys.ToArray()[index];
+            return Messages.KeysAsLabels().ToArray()[index];
         }
         #endregion
 
@@ -786,6 +787,8 @@ namespace CLMS
 
                     bdr.Position = startPosition + cStringOffset;
 
+                    Console.WriteLine(bdr.Position);
+
                     bool isNullChar = false;
                     string stringBuf = string.Empty;
 
@@ -801,6 +804,9 @@ namespace CLMS
                             stringBuf += cChar;
                         }
                     }
+
+                    Console.WriteLine(stringBuf);
+
                     attributeList.Add(new(cAttributeBytes[0..(cAttributeBytes.Length - 4)], stringBuf));
                 }
             }
@@ -912,13 +918,13 @@ namespace CLMS
 
             if (!UsesMessageID)
             {
-                WriteLBL1(bdw, LabelSlotCount, Messages.Keys.ToArray(), optimize);
+                WriteLBL1(bdw, LabelSlotCount, Messages.KeysAsLabels().ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
             else
             {
-                WriteNLI1(bdw, Messages.Keys.ToArray(), Messages.Values.ToArray());
+                WriteNLI1(bdw, Messages.KeysAsIndices().ToArray(), Messages.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
                 sectionNumber++;
             }
@@ -967,7 +973,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteNLI1(BinaryDataWriter bdw, string[] labels, Message[] messages)
+        private void WriteNLI1(BinaryDataWriter bdw, int[] indices, Message[] messages)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "NLI1");
             bdw.Write((uint)messages.Length);
@@ -975,7 +981,7 @@ namespace CLMS
             for (int i = 0; i < messages.Length; i++)
             {
                 //ID
-                bdw.Write(uint.Parse(labels[i]));
+                bdw.Write(indices[i]);
                 bdw.Write(i);
             }
 
