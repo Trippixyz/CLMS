@@ -10,6 +10,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Reflection.Emit;
 using System.Xml.Linq;
 using SharpYaml.Serialization;
+using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 
 namespace CLMS
 {
@@ -303,7 +305,6 @@ namespace CLMS
                     bdw.Write(labels[i], BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
                     bdw.Write(i);
                 }
-
             }
             else // no implementation yet sry :/  (WHO WOULD NOT OPTIMIZE...) (ok now its there)
             {
@@ -1073,6 +1074,261 @@ namespace CLMS
     #endregion
 
     #region shared
+    /// <summary>
+    /// The Type of a value gives info on how to process that data.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    public enum ParamType : byte
+    {
+        Uint8,
+        Uint16,
+        Uint32,
+        Uint8_2,
+        Uint16_2,
+        Uint32_2,
+        Float,
+        Uint16_3,
+        PrefixString_16,
+        List
+    }
+    public class LMSDictionary<T> : IDictionary<object, T>
+    {
+        private Dictionary<object, T> dictionary = new Dictionary<object, T>();
+
+        public KeyType Type;
+        public T this[object key]
+        {
+            get
+            {
+                switch (Type)
+                {
+                    case KeyType.Labels:
+                        return dictionary[(string)key];
+                    case KeyType.Indices:
+                        if (key is string)
+                        {
+                            if (int.TryParse((string)key, out int result))
+                            {
+                                return dictionary[result];
+                            }
+                        }
+                        else if (key is int)
+                        {
+                            return dictionary[(int)key];
+                        }
+                        throw new("Key was not an integer or a parsable string.");
+                    case KeyType.None:
+                        return dictionary.Values.ToArray()[(int)key];
+                }
+
+                return default;
+            }
+            set
+            {
+                switch (Type)
+                {
+                    case KeyType.Labels:
+                        dictionary[(string)key] = value;
+                        break;
+                    case KeyType.Indices:
+                        if (key is string)
+                        {
+                            if (int.TryParse((string)key, out int result))
+                            {
+                                dictionary[result] = value;
+                                break;
+                            }
+                        }
+                        else if (key is int)
+                        {
+                            dictionary[(int)key] = value;
+                            break;
+                        }
+                        throw new("Key was not an integer or a parsable string.");
+                    case KeyType.None:
+                        dictionary[dictionary.Keys.ToArray()[(int)key]] = value;
+                        break;
+                }
+            }
+        }
+        public int Count
+        {
+            get
+            {
+                return dictionary.Count;
+            }
+        }
+
+        #region Add
+        public void Add(KeyValuePair<object, T> item)
+        {
+            dictionary.Add(item.Key, item.Value);
+        }
+        public void Add(object key, T value)
+        {
+            if (key is string)
+            {
+                Add((string)key, value);
+            }
+            else if (key is int)
+            {
+                Add((int)key, value);
+            }
+        }
+        public void Add(string key, T value)
+        {
+            switch (Type)
+            {
+                case KeyType.Labels:
+                    dictionary.Add(key, value);
+                    break;
+                case KeyType.Indices:
+                    if (int.TryParse((string)key, out int result))
+                    {
+                        dictionary.Add(result, value);
+                    }
+                    else
+                    {
+                        throw new("The Key was not parsable to an integer.");
+                    }
+                    break;
+                case KeyType.None:
+                    throw new("The Key Type was not aligning the the used function.");
+            }
+        }
+        public void Add(int key, T value)
+        {
+            if (Type != KeyType.Indices)
+                throw new("The Key Type was not aligning the the used function.");
+
+            dictionary.Add(key, value);
+        }
+        public void Add(T value)
+        {
+            if (Type != KeyType.None)
+                throw new("The Key Type was not aligning the the used function.");
+
+            dictionary.Add((long)dictionary.Count > 0 ? (long)dictionary.Keys.Last() + 1 : 0, value);
+        }
+        #endregion
+
+        public void Clear()
+        {
+            dictionary.Clear();
+        }
+
+        public Dictionary<object, T>.KeyCollection Keys
+        {
+            get
+            {
+                return dictionary.Keys;
+            }
+        }
+
+        public IEnumerable<T> Values
+        {
+            get
+            {
+                return dictionary.Values;
+            }
+        }
+
+        ICollection<object> IDictionary<object, T>.Keys => dictionary.Keys;
+
+        ICollection<T> IDictionary<object, T>.Values => dictionary.Values;
+
+        public bool IsReadOnly => false;
+
+        public IEnumerable<string> KeysAsLabels()
+        {
+            if (Type != KeyType.Labels)
+                throw new InvalidOperationException("Key Type must be Labels to use KeysAsLabels.");
+
+            return dictionary.Keys.Select(k => (string)k);
+        }
+        public IEnumerable<int> KeysAsIndices()
+        {
+            if (Type != KeyType.Indices)
+                throw new InvalidOperationException("Key Type must be Indices to use KeysAsIndices.");
+
+            return dictionary.Keys.Select(k => (int)k);
+        }
+
+        public IEnumerator<KeyValuePair<object, T>> GetEnumerator()
+        {
+            return dictionary.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return this.GetEnumerator();
+        }
+
+        public bool ContainsKey(object key)
+        {
+            return dictionary.ContainsKey(key);
+        }
+
+        public bool Remove(object key)
+        {
+            return dictionary.Remove(key);
+        }
+
+        public bool TryGetValue(object key, [MaybeNullWhen(false)] out T value)
+        {
+            return dictionary.TryGetValue(key, out value);
+        }
+
+        public bool Contains(KeyValuePair<object, T> item)
+        {
+            if (dictionary.ContainsKey(item.Key))
+            {
+                if (item.Value.Equals(dictionary[item.Key]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void CopyTo(KeyValuePair<object, T>[] array, int arrayIndex)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool Remove(KeyValuePair<object, T> item)
+        {
+            if (dictionary.ContainsKey(item.Key))
+            {
+                if (item.Value.Equals(dictionary[item.Key]))
+                {
+                    return dictionary.Remove(item.Key);
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Specifies the type of key / if keys are used to store data.
+        /// </summary>
+        public enum KeyType
+        {
+            /// <summary>
+            /// Data uses string labels as keys.
+            /// </summary>
+            Labels,
+            /// <summary>
+            /// Data uses an indices table (NL1 section) *Only used in MSBTs(?) as keys.
+            /// </summary>
+            Indices,
+            /// <summary>
+            /// Data doesnt use the keys(labels) but goes after the index.
+            /// </summary>
+            None
+        }
+    }
     internal class LabelSection
     {
         public uint SlotNum;
@@ -1165,7 +1421,7 @@ namespace CLMS
             bdw.Write(NumberOfSections);
             bdw.Write(new byte[2]);
             bdw.Write(FileSize);
-            bdw.Write(new byte[10]);
+            bdw.Write(new byte[0x0A]);
         }
         public void OverrideStats(BinaryDataWriter bdw, ushort newNumberOfBlocks, uint newFileSize)
         {
