@@ -1091,20 +1091,39 @@ namespace CLMS
         PrefixString_16,
         List
     }
+
+    /// <summary>
+    /// Specifies the type of key / if keys are used to store data.
+    /// </summary>
+    public enum LMSDictionaryKeyType
+    {
+        /// <summary>
+        /// Data uses string labels as keys.
+        /// </summary>
+        Labels,
+        /// <summary>
+        /// Data uses an indices table (NL1 section) *Only used in MSBTs(?) as keys.
+        /// </summary>
+        Indices,
+        /// <summary>
+        /// Data doesnt use the keys(labels) but goes after the index.
+        /// </summary>
+        None
+    }
     public class LMSDictionary<T> : IDictionary<object, T>
     {
         private Dictionary<object, T> dictionary = new Dictionary<object, T>();
 
-        public KeyType Type;
+        public LMSDictionaryKeyType Type;
         public T this[object key]
         {
             get
             {
                 switch (Type)
                 {
-                    case KeyType.Labels:
+                    case LMSDictionaryKeyType.Labels:
                         return dictionary[(string)key];
-                    case KeyType.Indices:
+                    case LMSDictionaryKeyType.Indices:
                         if (key is string)
                         {
                             if (int.TryParse((string)key, out int result))
@@ -1117,7 +1136,7 @@ namespace CLMS
                             return dictionary[(int)key];
                         }
                         throw new("Key was not an integer or a parsable string.");
-                    case KeyType.None:
+                    case LMSDictionaryKeyType.None:
                         return dictionary.Values.ToArray()[(int)key];
                 }
 
@@ -1127,10 +1146,10 @@ namespace CLMS
             {
                 switch (Type)
                 {
-                    case KeyType.Labels:
+                    case LMSDictionaryKeyType.Labels:
                         dictionary[(string)key] = value;
                         break;
-                    case KeyType.Indices:
+                    case LMSDictionaryKeyType.Indices:
                         if (key is string)
                         {
                             if (int.TryParse((string)key, out int result))
@@ -1145,7 +1164,7 @@ namespace CLMS
                             break;
                         }
                         throw new("Key was not an integer or a parsable string.");
-                    case KeyType.None:
+                    case LMSDictionaryKeyType.None:
                         dictionary[dictionary.Keys.ToArray()[(int)key]] = value;
                         break;
                 }
@@ -1308,25 +1327,6 @@ namespace CLMS
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// Specifies the type of key / if keys are used to store data.
-        /// </summary>
-        public enum KeyType
-        {
-            /// <summary>
-            /// Data uses string labels as keys.
-            /// </summary>
-            Labels,
-            /// <summary>
-            /// Data uses an indices table (NL1 section) *Only used in MSBTs(?) as keys.
-            /// </summary>
-            Indices,
-            /// <summary>
-            /// Data doesnt use the keys(labels) but goes after the index.
-            /// </summary>
-            None
         }
     }
     internal class LabelSection

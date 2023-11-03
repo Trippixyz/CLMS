@@ -15,10 +15,10 @@ namespace CLMS
     public class MSBP : LMSBase, IYaml<MSBP>
     {
         // specific
-        public Dictionary<string, Color> Colors = new();
-        public Dictionary<string, AttributeInfo> AttributeInfos = new();
+        public LMSDictionary<Color> Colors = new();
+        public LMSDictionary<AttributeInfo> AttributeInfos = new();
         public Dictionary<ushort, ControlTagGroup> ControlTags = new();
-        public Dictionary<string, Style> Styles = new();
+        public LMSDictionary<Style> Styles = new();
         public List<string> SourceFiles = new();
 
         public MSBP() : base(FileType.MSBP) { }
@@ -56,7 +56,20 @@ namespace CLMS
                 {
                     Color colorValue = color.Value;
                     string hex = $"#{colorValue.A:X2}{colorValue.R:X2}{colorValue.G:X2}{colorValue.B:X2}";
-                    colorsNode.Add(color.Key, hex);
+
+                    switch (Colors.Type)
+                    {
+                        case LMSDictionaryKeyType.Labels:
+                            colorsNode.Add((string)color.Key, hex);
+                            break;
+                        case LMSDictionaryKeyType.Indices:
+                            colorsNode.Add(color.Key.ToString(), hex);
+                            break;
+                        case LMSDictionaryKeyType.None:
+                            colorsNode.Add(hex);
+                            break;
+                    }
+                    colorsNode.Add(color.Key is string ? (string)color.Key : color.Key.ToString(), hex);
                 }
 
                 root.Add("Colors", colorsNode);
@@ -84,7 +97,7 @@ namespace CLMS
 
                     attributeInfoNode.Add("Offset", attribute.Value.Offset.ToString());
 
-                    attributeInfosNode.Add(attribute.Key, attributeInfoNode);
+                    attributeInfosNode.Add(attribute.Key is string ? (string)attribute.Key : attribute.Key.ToString(), attributeInfoNode);
                 }
 
                 root.Add("AttributeInfos", attributeInfosNode);
