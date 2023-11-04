@@ -13,7 +13,7 @@ namespace CLMS
     public interface IYaml<T> // yaml format
     {
         public string ToYaml();
-        public static T FromYaml(string yaml) { return default(T); }
+        public static T FromYaml(string yaml) { return default; }
     }
     public abstract class LMSBase
     {
@@ -1424,18 +1424,7 @@ namespace CLMS
             bdw.Write((ushort)ByteOrder);
             bdw.ByteOrder = ByteOrder;
             bdw.Write(new byte[2]);
-            switch ((int)EncodingType)
-            {
-                case 0:
-                    bdw.Write((byte)0);
-                    break;
-                case 1:
-                    bdw.Write((byte)1);
-                    break;
-                case 2:
-                    bdw.Write((byte)2);
-                    break;
-            }
+            bdw.Write((byte)EncodingType);
             bdw.Write(VersionNumber);
             bdw.Write(NumberOfSections);
             bdw.Write(new byte[2]);
