@@ -1109,7 +1109,7 @@ namespace CLMS
     {
         private Dictionary<object, T> dictionary = new Dictionary<object, T>();
         private LMSDictionaryKeyType disabledKeyTypes;
-        private LMSDictionaryKeyType type;
+        private LMSDictionaryKeyType type = LMSDictionaryKeyType.Labels;
 
         public LMSDictionaryKeyType Type
         {
