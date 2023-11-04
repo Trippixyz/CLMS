@@ -1,11 +1,10 @@
-﻿using Syroot.BinaryData;
-using System.Collections.Generic;
+﻿using SharpYaml.Serialization;
+using Syroot.BinaryData;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using SharpYaml;
-using SharpYaml.Serialization;
 using static CLMS.LMS;
 using static CLMS.Shared;
 
@@ -728,7 +727,7 @@ namespace CLMS
         private LBL1 ReadLBL1(BinaryDataReader bdr)
         {
             LBL1 result = new();
-            
+
             result.LabelHolder = ReadLabels(bdr);
 
             return result;

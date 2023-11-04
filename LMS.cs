@@ -1,17 +1,12 @@
 ﻿using Syroot.BinaryData;
 using System;
-using System.IO;
+using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Data;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Text;
-using System.Data;
-using System.ComponentModel.DataAnnotations;
-using System.Reflection.Emit;
-using System.Xml.Linq;
-using SharpYaml.Serialization;
-using System.Collections;
-using System.Diagnostics.CodeAnalysis;
 
 namespace CLMS
 {
@@ -156,7 +151,7 @@ namespace CLMS
             bdr.ByteOrder = Header.ByteOrder;
             return bdr;
         }
-        protected  (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
+        protected (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
         {
             Stream stm = new MemoryStream();
             BinaryDataWriter bdw = new(stm, Encoding);
@@ -877,7 +872,7 @@ namespace CLMS
         {
             get
             {
-                switch(NextFlow.GetType().Name)
+                switch (NextFlow.GetType().Name)
                 {
                     case "MessageFlowNode": return FlowType.Message;
                     case "ConditionFlowNode": return FlowType.Condition;
@@ -1100,21 +1095,36 @@ namespace CLMS
         /// <summary>
         /// Data uses string labels as keys.
         /// </summary>
-        Labels,
+        Labels = 0x1,
         /// <summary>
         /// Data uses an indices table (NL1 section) *Only used in MSBTs(?) as keys.
         /// </summary>
-        Indices,
+        Indices = 0x2,
         /// <summary>
         /// Data doesnt use the keys(labels) but goes after the index.
         /// </summary>
-        None
+        None = 0x4
     }
     public class LMSDictionary<T> : IDictionary<object, T>
     {
         private Dictionary<object, T> dictionary = new Dictionary<object, T>();
+        private LMSDictionaryKeyType disabledKeyTypes;
+        private LMSDictionaryKeyType type;
 
-        public LMSDictionaryKeyType Type;
+        public LMSDictionaryKeyType Type
+        {
+            get { return type; }
+            set
+            {
+                // Check if the provided value is one of the disabled key types
+                if ((disabledKeyTypes & value) != 0)
+                {
+                    throw new InvalidOperationException($"The key type {value} is disabled for this dictionary.");
+                }
+                type = value;
+            }
+
+        }
         public T this[object key]
         {
             get
@@ -1178,6 +1188,48 @@ namespace CLMS
             }
         }
 
+        public bool IsReadOnly => false;
+
+        #region Keys/Values
+        public Dictionary<object, T>.KeyCollection Keys
+        {
+            get
+            {
+                return dictionary.Keys;
+            }
+        }
+        public Dictionary<object, T>.ValueCollection Values
+        {
+            get
+            {
+                return dictionary.Values;
+            }
+        }
+
+        ICollection<object> IDictionary<object, T>.Keys => dictionary.Keys;
+        ICollection<T> IDictionary<object, T>.Values => dictionary.Values;
+
+        public IEnumerable<string> KeysAsLabels()
+        {
+            if (Type != LMSDictionaryKeyType.Labels)
+                throw new InvalidOperationException("Key Type must be Labels to use KeysAsLabels.");
+
+            return dictionary.Keys.Select(k => (string)k);
+        }
+        public IEnumerable<int> KeysAsIndices()
+        {
+            if (Type != LMSDictionaryKeyType.Indices)
+                throw new InvalidOperationException("Key Type must be Indices to use KeysAsIndices.");
+
+            return dictionary.Keys.Select(k => (int)k);
+        }
+        #endregion
+
+        public LMSDictionary(LMSDictionaryKeyType disabledKeyTypes = 0)
+        {
+            this.disabledKeyTypes = disabledKeyTypes;
+        }
+
         #region Add
         public void Add(KeyValuePair<object, T> item)
         {
@@ -1198,10 +1250,10 @@ namespace CLMS
         {
             switch (Type)
             {
-                case KeyType.Labels:
+                case LMSDictionaryKeyType.Labels:
                     dictionary.Add(key, value);
                     break;
-                case KeyType.Indices:
+                case LMSDictionaryKeyType.Indices:
                     if (int.TryParse((string)key, out int result))
                     {
                         dictionary.Add(result, value);
@@ -1211,68 +1263,27 @@ namespace CLMS
                         throw new("The Key was not parsable to an integer.");
                     }
                     break;
-                case KeyType.None:
+                case LMSDictionaryKeyType.None:
                     throw new("The Key Type was not aligning the the used function.");
             }
         }
         public void Add(int key, T value)
         {
-            if (Type != KeyType.Indices)
+            if (Type != LMSDictionaryKeyType.Indices)
                 throw new("The Key Type was not aligning the the used function.");
 
             dictionary.Add(key, value);
         }
         public void Add(T value)
         {
-            if (Type != KeyType.None)
+            if (Type != LMSDictionaryKeyType.None)
                 throw new("The Key Type was not aligning the the used function.");
 
             dictionary.Add((long)dictionary.Count > 0 ? (long)dictionary.Keys.Last() + 1 : 0, value);
         }
         #endregion
 
-        public void Clear()
-        {
-            dictionary.Clear();
-        }
-
-        public Dictionary<object, T>.KeyCollection Keys
-        {
-            get
-            {
-                return dictionary.Keys;
-            }
-        }
-
-        public IEnumerable<T> Values
-        {
-            get
-            {
-                return dictionary.Values;
-            }
-        }
-
-        ICollection<object> IDictionary<object, T>.Keys => dictionary.Keys;
-
-        ICollection<T> IDictionary<object, T>.Values => dictionary.Values;
-
-        public bool IsReadOnly => false;
-
-        public IEnumerable<string> KeysAsLabels()
-        {
-            if (Type != KeyType.Labels)
-                throw new InvalidOperationException("Key Type must be Labels to use KeysAsLabels.");
-
-            return dictionary.Keys.Select(k => (string)k);
-        }
-        public IEnumerable<int> KeysAsIndices()
-        {
-            if (Type != KeyType.Indices)
-                throw new InvalidOperationException("Key Type must be Indices to use KeysAsIndices.");
-
-            return dictionary.Keys.Select(k => (int)k);
-        }
-
+        #region Enumerator
         public IEnumerator<KeyValuePair<object, T>> GetEnumerator()
         {
             return dictionary.GetEnumerator();
@@ -1282,22 +1293,14 @@ namespace CLMS
         {
             return this.GetEnumerator();
         }
-
-        public bool ContainsKey(object key)
-        {
-            return dictionary.ContainsKey(key);
-        }
-
-        public bool Remove(object key)
-        {
-            return dictionary.Remove(key);
-        }
+        #endregion
 
         public bool TryGetValue(object key, [MaybeNullWhen(false)] out T value)
         {
             return dictionary.TryGetValue(key, out value);
         }
 
+        #region Contains
         public bool Contains(KeyValuePair<object, T> item)
         {
             if (dictionary.ContainsKey(item.Key))
@@ -1310,12 +1313,17 @@ namespace CLMS
 
             return false;
         }
-
-        public void CopyTo(KeyValuePair<object, T>[] array, int arrayIndex)
+        public bool ContainsKey(object key)
         {
-            throw new NotImplementedException();
+            return dictionary.ContainsKey(key);
         }
+        #endregion
 
+        #region Remove
+        public bool Remove(object key)
+        {
+            return dictionary.Remove(key);
+        }
         public bool Remove(KeyValuePair<object, T> item)
         {
             if (dictionary.ContainsKey(item.Key))
@@ -1327,6 +1335,17 @@ namespace CLMS
             }
 
             return false;
+        }
+        #endregion
+
+        public void Clear()
+        {
+            dictionary.Clear();
+        }
+
+        public void CopyTo(KeyValuePair<object, T>[] array, int arrayIndex)
+        {
+            throw new NotImplementedException();
         }
     }
     internal class LabelSection

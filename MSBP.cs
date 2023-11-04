@@ -2,7 +2,6 @@
 using Syroot.BinaryData;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -15,10 +14,10 @@ namespace CLMS
     public class MSBP : LMSBase, IYaml<MSBP>
     {
         // specific
-        public LMSDictionary<Color> Colors = new();
-        public LMSDictionary<AttributeInfo> AttributeInfos = new();
+        public LMSDictionary<Color> Colors = new(disabledKeyTypes: LMSDictionaryKeyType.Indices);
+        public LMSDictionary<AttributeInfo> AttributeInfos = new(disabledKeyTypes: LMSDictionaryKeyType.Indices);
         public Dictionary<ushort, ControlTagGroup> ControlTags = new();
-        public LMSDictionary<Style> Styles = new();
+        public LMSDictionary<Style> Styles = new(disabledKeyTypes: LMSDictionaryKeyType.Indices);
         public List<string> SourceFiles = new();
 
         public MSBP() : base(FileType.MSBP) { }
@@ -51,56 +50,89 @@ namespace CLMS
 
             if (Colors != null)
             {
-                YamlMappingNode colorsNode = new();
-                foreach (var color in Colors)
+                switch (Colors.Type)
                 {
-                    Color colorValue = color.Value;
-                    string hex = $"#{colorValue.A:X2}{colorValue.R:X2}{colorValue.G:X2}{colorValue.B:X2}";
+                    case LMSDictionaryKeyType.Labels:
+                        YamlMappingNode colorsMappingNode = new();
+                        foreach (var color in Colors)
+                        {
+                            Color colorValue = color.Value;
+                            string hex = $"#{colorValue.A:X2}{colorValue.R:X2}{colorValue.G:X2}{colorValue.B:X2}";
 
-                    switch (Colors.Type)
-                    {
-                        case LMSDictionaryKeyType.Labels:
-                            colorsNode.Add((string)color.Key, hex);
-                            break;
-                        case LMSDictionaryKeyType.Indices:
-                            colorsNode.Add(color.Key.ToString(), hex);
-                            break;
-                        case LMSDictionaryKeyType.None:
-                            colorsNode.Add(hex);
-                            break;
-                    }
-                    colorsNode.Add(color.Key is string ? (string)color.Key : color.Key.ToString(), hex);
+                            colorsMappingNode.Add((string)color.Key, hex);
+                        }
+                        root.Add("Colors", colorsMappingNode);
+                        break;
+                    case LMSDictionaryKeyType.None:
+                        YamlSequenceNode colorsSequenceNode = new();
+                        foreach (var color in Colors)
+                        {
+                            Color colorValue = color.Value;
+                            string hex = $"#{colorValue.A:X2}{colorValue.R:X2}{colorValue.G:X2}{colorValue.B:X2}";
+
+                            colorsSequenceNode.Add(hex);
+                        }
+                        root.Add("Colors", colorsSequenceNode);
+                        break;
                 }
-
-                root.Add("Colors", colorsNode);
             }
             if (AttributeInfos != null)
             {
-                YamlMappingNode attributeInfosNode = new();
-                foreach (var attribute in AttributeInfos)
+                switch (AttributeInfos.Type)
                 {
-                    YamlMappingNode attributeInfoNode = new();
-
-                    if (attribute.Value.HasList)
-                    {
-                        YamlSequenceNode attributeListNode = new();
-                        foreach (var attributeListEntry in attribute.Value.List)
+                    case LMSDictionaryKeyType.Labels:
+                        YamlMappingNode attributeInfosMappingNode = new();
+                        foreach (var attribute in AttributeInfos)
                         {
-                            attributeListNode.Add(attributeListEntry);
+                            YamlMappingNode attributeInfoNode = new();
+
+                            if (attribute.Value.HasList)
+                            {
+                                YamlSequenceNode attributeListNode = new();
+                                foreach (var attributeListEntry in attribute.Value.List)
+                                {
+                                    attributeListNode.Add(attributeListEntry);
+                                }
+                                attributeInfoNode.Add("List", attributeListNode);
+                            }
+                            else
+                            {
+                                attributeInfoNode.Add("Type", attribute.Value.Type.ToString());
+                            }
+
+                            attributeInfoNode.Add("Offset", attribute.Value.Offset.ToString());
+
+                            attributeInfosMappingNode.Add((string)attribute.Key, attributeInfoNode);
                         }
-                        attributeInfoNode.Add("List", attributeListNode);
-                    }
-                    else
-                    {
-                        attributeInfoNode.Add("Type", attribute.Value.Type.ToString());
-                    }
+                        root.Add("AttributeInfos", attributeInfosMappingNode);
+                        break;
+                    case LMSDictionaryKeyType.None:
+                        YamlSequenceNode attributeInfosSequenceNode = new();
+                        foreach (var attribute in AttributeInfos)
+                        {
+                            YamlMappingNode attributeInfoNode = new();
 
-                    attributeInfoNode.Add("Offset", attribute.Value.Offset.ToString());
+                            if (attribute.Value.HasList)
+                            {
+                                YamlSequenceNode attributeListNode = new();
+                                foreach (var attributeListEntry in attribute.Value.List)
+                                {
+                                    attributeListNode.Add(attributeListEntry);
+                                }
+                                attributeInfoNode.Add("List", attributeListNode);
+                            }
+                            else
+                            {
+                                attributeInfoNode.Add("Type", attribute.Value.Type.ToString());
+                            }
 
-                    attributeInfosNode.Add(attribute.Key is string ? (string)attribute.Key : attribute.Key.ToString(), attributeInfoNode);
+                            attributeInfoNode.Add("Offset", attribute.Value.Offset.ToString());
+
+                            attributeInfosSequenceNode.Add(attributeInfoNode);
+                        }
+                        root.Add("AttributeInfos", attributeInfosSequenceNode);
+                        break;
                 }
-
-                root.Add("AttributeInfos", attributeInfosNode);
             }
             if (ControlTags != null)
             {
@@ -144,19 +176,41 @@ namespace CLMS
             }
             if (Styles != null)
             {
-                YamlMappingNode stylesNode = new();
-                foreach (var style in Styles)
+                switch (Styles.Type)
                 {
-                    YamlMappingNode styleNode = new();
-                    styleNode.Add("RegionWidth", style.Value.RegionWidth.ToString());
-                    styleNode.Add("LineNumber", style.Value.LineNumber.ToString());
-                    styleNode.Add("FontIndex", style.Value.FontIndex.ToString());
-                    styleNode.Add("BaseColorIndex", style.Value.BaseColorIndex.ToString());
+                    case LMSDictionaryKeyType.Labels:
+                        YamlMappingNode stylesMappingNode = new();
+                        foreach (var style in Styles)
+                        {
+                            YamlMappingNode styleNode = new()
+                            {
+                                { "RegionWidth", style.Value.RegionWidth.ToString() },
+                                { "LineNumber", style.Value.LineNumber.ToString() },
+                                { "FontIndex", style.Value.FontIndex.ToString() },
+                                { "BaseColorIndex", style.Value.BaseColorIndex.ToString() }
+                            };
 
-                    stylesNode.Add(style.Key, styleNode);
+                            stylesMappingNode.Add((string)style.Key, styleNode);
+                        }
+                        root.Add("Styles", stylesMappingNode);
+                        break;
+                    case LMSDictionaryKeyType.None:
+                        YamlSequenceNode stylesSequenceNode = new();
+                        foreach (var style in Styles)
+                        {
+                            YamlMappingNode styleNode = new()
+                            {
+                                { "RegionWidth", style.Value.RegionWidth.ToString() },
+                                { "LineNumber", style.Value.LineNumber.ToString() },
+                                { "FontIndex", style.Value.FontIndex.ToString() },
+                                { "BaseColorIndex", style.Value.BaseColorIndex.ToString() }
+                            };
+
+                            stylesSequenceNode.Add(styleNode);
+                        }
+                        root.Add("Styles", stylesSequenceNode);
+                        break;
                 }
-
-                root.Add("Styles", stylesNode);
             }
             if (SourceFiles != null)
             {
@@ -668,7 +722,7 @@ namespace CLMS
         private CLB1 ReadCLB1(BinaryDataReader bdr)
         {
             CLB1 result = new();
-            
+
             result.LabelHolder = ReadLabels(bdr);
 
             return result;
@@ -954,7 +1008,7 @@ namespace CLMS
                 WriteCLR1(bdw, Colors.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
 
-                WriteCLB1(bdw, LabelSlotCount, Colors.Keys.ToArray(), optimize);
+                WriteCLB1(bdw, LabelSlotCount, Colors.KeysAsLabels().ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
 
                 sectionNumber += 2;
@@ -964,7 +1018,7 @@ namespace CLMS
             {
                 WriteATI2(bdw, AttributeInfos.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
-                WriteALB1(bdw, LabelSlotCount, AttributeInfos.Keys.ToArray(), optimize);
+                WriteALB1(bdw, LabelSlotCount, AttributeInfos.KeysAsLabels().ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
 
                 List<List<string>> attributeListslist = new();
@@ -1000,7 +1054,7 @@ namespace CLMS
                 WriteSYL3(bdw, Styles.Values.ToArray());
                 bdw.Align(0x10, 0xAB);
 
-                WriteSLB1(bdw, LabelSlotCount, Styles.Keys.ToArray(), optimize);
+                WriteSLB1(bdw, LabelSlotCount, Styles.KeysAsLabels().ToArray(), optimize);
                 bdw.Align(0x10, 0xAB);
 
                 sectionNumber += 2;
