@@ -621,30 +621,63 @@ namespace CLMS
             }
 
             // beginning of parsing buffers into class items
-            if (isCLR1 && isCLB1) // Color
+            if (isCLR1) // Color
             {
-                for (uint i = 0; i < clb1.LabelHolder.Labels.Length; i++)
+                if (isCLB1)
                 {
-                    Colors.Add(clb1.LabelHolder.Labels[i], clr1.Colors[i]);
-                }
+                    Colors.Type = LMSDictionaryKeyType.Labels;
 
-                LabelSlotCount = clb1.LabelHolder.SlotNum;
+                    for (uint i = 0; i < clb1.LabelHolder.Labels.Length; i++)
+                    {
+                        Colors.Add(clb1.LabelHolder.Labels[i], clr1.Colors[i]);
+                    }
+
+                    LabelSlotCount = clb1.LabelHolder.SlotNum;
+                }
+                else
+                {
+                    Colors.Type = LMSDictionaryKeyType.None;
+
+                    for (uint i = 0; i < clb1.LabelHolder.Labels.Length; i++)
+                    {
+                        Colors.Add(clr1.Colors[i]);
+                    }
+                }
             }
             else { Colors = null; }
 
-            if (isATI2 && isALB1 && isALI2) // Attribute
+            if (isATI2 && isALI2) // Attribute
             {
-                for (uint i = 0; i < alb1.LabelHolder.Labels.Length; i++)
+                if (isALB1)
                 {
-                    if (ati2.AttributeInfos[i].HasList)
+                    Colors.Type = LMSDictionaryKeyType.Labels;
+
+                    for (uint i = 0; i < alb1.LabelHolder.Labels.Length; i++)
                     {
-                        ati2.AttributeInfos[i].List = ali2.AttributeInfoLists[ati2.AttributeInfoListIndices[i]];
+                        if (ati2.AttributeInfos[i].HasList)
+                        {
+                            ati2.AttributeInfos[i].List = ali2.AttributeInfoLists[ati2.AttributeInfoListIndices[i]];
+                        }
+
+                        AttributeInfos.Add(alb1.LabelHolder.Labels[i], ati2.AttributeInfos[i]);
                     }
 
-                    AttributeInfos.Add(alb1.LabelHolder.Labels[i], ati2.AttributeInfos[i]);
+                    LabelSlotCount = alb1.LabelHolder.SlotNum;
                 }
+                else
+                {
+                    Colors.Type = LMSDictionaryKeyType.None;
 
-                LabelSlotCount = alb1.LabelHolder.SlotNum;
+                    for (uint i = 0; i < alb1.LabelHolder.Labels.Length; i++)
+                    {
+                        if (ati2.AttributeInfos[i].HasList)
+                        {
+                            ati2.AttributeInfos[i].List = ali2.AttributeInfoLists[ati2.AttributeInfoListIndices[i]];
+                        }
+
+                        AttributeInfos.Add(ati2.AttributeInfos[i]);
+                    }
+                }
             }
             else { AttributeInfos = null; }
 
@@ -687,14 +720,28 @@ namespace CLMS
             }
             else { ControlTags = null; }
 
-            if (isSYL3 && isSLB1) // Style
+            if (isSYL3) // Style
             {
-                for (uint i = 0; i < slb1.LabelHolder.Labels.Length; i++)
+                if (isSLB1)
                 {
-                    Styles.Add(slb1.LabelHolder.Labels[i], syl3.Styles[i]);
-                }
+                    Styles.Type = LMSDictionaryKeyType.Labels;
 
-                LabelSlotCount = slb1.LabelHolder.SlotNum;
+                    for (uint i = 0; i < slb1.LabelHolder.Labels.Length; i++)
+                    {
+                        Styles.Add(slb1.LabelHolder.Labels[i], syl3.Styles[i]);
+                    }
+
+                    LabelSlotCount = slb1.LabelHolder.SlotNum;
+                }
+                else
+                {
+                    Styles.Type = LMSDictionaryKeyType.None;
+
+                    for (uint i = 0; i < slb1.LabelHolder.Labels.Length; i++)
+                    {
+                        Styles.Add(syl3.Styles[i]);
+                    }
+                }
             }
             else { Styles = null; }
 

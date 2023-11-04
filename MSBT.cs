@@ -669,6 +669,12 @@ namespace CLMS
                 bdr.AlignPos(0x10);
             }
 
+            Messages.Type = LMSDictionaryKeyType.None;
+            if (isLBL1)
+                Messages.Type = LMSDictionaryKeyType.Labels;
+            if (isNLI1)
+                Messages.Type = LMSDictionaryKeyType.Indices;
+
             // beginning of parsing buffers into class items
             if (isLBL1 && isTXT2)
             {
