@@ -10,11 +10,15 @@ using System.Text;
 
 namespace CLMS
 {
+    #region Yaml
     public interface IYaml<T> // yaml format
     {
         public string ToYaml();
         public static T FromYaml(string yaml) { return default(T); }
     }
+    #endregion
+
+    #region Base
     public abstract class LMSBase
     {
         // general
@@ -160,6 +164,8 @@ namespace CLMS
             return (stm, bdw, sectionNumber);
         }
     }
+    #endregion
+
     public class MessageCollection
     {
         public MSBP MessageProject;
@@ -1388,13 +1394,7 @@ namespace CLMS
             ByteOrder = (ByteOrder)bdr.ReadUInt16();
             bdr.ByteOrder = ByteOrder;
             bdr.ReadUInt16();
-            byte msgEncoding = bdr.ReadByte();
-            switch (msgEncoding)
-            {
-                case 0: EncodingType = EncodingType.UTF8; break;
-                case 1: EncodingType = EncodingType.UTF16; break;
-                case 2: EncodingType = EncodingType.UTF32; break;
-            }
+            EncodingType = (EncodingType)bdr.ReadByte();
             VersionNumber = bdr.ReadByte();
             NumberOfSections = bdr.ReadUInt16();
             bdr.ReadUInt16();
