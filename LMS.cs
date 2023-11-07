@@ -166,6 +166,7 @@ namespace CLMS
     }
     #endregion
 
+    #region Other
     public class MessageCollection
     {
         public MSBP MessageProject;
@@ -189,6 +190,7 @@ namespace CLMS
             return aTag.ToStringPair(MessageProject);
         }
     }
+
     public static class LMSTools
     {
         public static TagConfig ToTagConfig(this Tag aTag)
@@ -217,6 +219,9 @@ namespace CLMS
             return (null, null);
         }
     }
+    #endregion
+
+    #region LMS
     internal static class LMS
     {
         #region generic
@@ -368,6 +373,269 @@ namespace CLMS
         #endregion
     }
 
+    /// <summary>
+    /// Specifies the type of key / if keys are used to store data.
+    /// </summary>
+    public enum LMSDictionaryKeyType
+    {
+        /// <summary>
+        /// Data uses string labels as keys.
+        /// </summary>
+        Labels = 0x1,
+        /// <summary>
+        /// Data uses an indices table (NL1 section) *Only used in MSBTs(?) as keys.
+        /// </summary>
+        Indices = 0x2,
+        /// <summary>
+        /// Data doesnt use the keys(labels) but goes after the index.
+        /// </summary>
+        None = 0x4
+    }
+    public class LMSDictionary<T> : IDictionary<object, T>
+    {
+        private Dictionary<object, T> dictionary = new Dictionary<object, T>();
+        private LMSDictionaryKeyType disabledKeyTypes;
+        private LMSDictionaryKeyType type = LMSDictionaryKeyType.Labels;
+
+        public LMSDictionaryKeyType Type
+        {
+            get { return type; }
+            set
+            {
+                // Check if the provided value is one of the disabled key types
+                if ((disabledKeyTypes & value) != 0)
+                {
+                    throw new InvalidOperationException($"The key type {value} is disabled for this dictionary.");
+                }
+                type = value;
+            }
+
+        }
+        public T this[object key]
+        {
+            get
+            {
+                switch (Type)
+                {
+                    case LMSDictionaryKeyType.Labels:
+                        return dictionary[(string)key];
+                    case LMSDictionaryKeyType.Indices:
+                        if (key is string)
+                        {
+                            if (int.TryParse((string)key, out int result))
+                            {
+                                return dictionary[result];
+                            }
+                        }
+                        else if (key is int)
+                        {
+                            return dictionary[(int)key];
+                        }
+                        throw new("Key was not an integer or a parsable string.");
+                    case LMSDictionaryKeyType.None:
+                        return dictionary.Values.ToArray()[(int)key];
+                }
+
+                return default;
+            }
+            set
+            {
+                switch (Type)
+                {
+                    case LMSDictionaryKeyType.Labels:
+                        dictionary[(string)key] = value;
+                        break;
+                    case LMSDictionaryKeyType.Indices:
+                        if (key is string)
+                        {
+                            if (int.TryParse((string)key, out int result))
+                            {
+                                dictionary[result] = value;
+                                break;
+                            }
+                        }
+                        else if (key is int)
+                        {
+                            dictionary[(int)key] = value;
+                            break;
+                        }
+                        throw new("Key was not an integer or a parsable string.");
+                    case LMSDictionaryKeyType.None:
+                        dictionary[dictionary.Keys.ToArray()[(int)key]] = value;
+                        break;
+                }
+            }
+        }
+        public int Count
+        {
+            get
+            {
+                return dictionary.Count;
+            }
+        }
+
+        public bool IsReadOnly => false;
+
+        #region Keys/Values
+        public Dictionary<object, T>.KeyCollection Keys
+        {
+            get
+            {
+                return dictionary.Keys;
+            }
+        }
+        public Dictionary<object, T>.ValueCollection Values
+        {
+            get
+            {
+                return dictionary.Values;
+            }
+        }
+
+        ICollection<object> IDictionary<object, T>.Keys => dictionary.Keys;
+        ICollection<T> IDictionary<object, T>.Values => dictionary.Values;
+
+        public IEnumerable<string> KeysAsLabels()
+        {
+            if (Type != LMSDictionaryKeyType.Labels)
+                throw new InvalidOperationException("Key Type must be Labels to use KeysAsLabels.");
+
+            return dictionary.Keys.Select(k => (string)k);
+        }
+        public IEnumerable<int> KeysAsIndices()
+        {
+            if (Type != LMSDictionaryKeyType.Indices)
+                throw new InvalidOperationException("Key Type must be Indices to use KeysAsIndices.");
+
+            return dictionary.Keys.Select(k => (int)k);
+        }
+        #endregion
+
+        public LMSDictionary(LMSDictionaryKeyType disabledKeyTypes = 0)
+        {
+            this.disabledKeyTypes = disabledKeyTypes;
+        }
+
+        #region Add
+        public void Add(KeyValuePair<object, T> item)
+        {
+            dictionary.Add(item.Key, item.Value);
+        }
+        public void Add(object key, T value)
+        {
+            if (key is string)
+            {
+                Add((string)key, value);
+            }
+            else if (key is int)
+            {
+                Add((int)key, value);
+            }
+        }
+        public void Add(string key, T value)
+        {
+            switch (Type)
+            {
+                case LMSDictionaryKeyType.Labels:
+                    dictionary.Add(key, value);
+                    break;
+                case LMSDictionaryKeyType.Indices:
+                    if (int.TryParse((string)key, out int result))
+                    {
+                        dictionary.Add(result, value);
+                    }
+                    else
+                    {
+                        throw new("The Key was not parsable to an integer.");
+                    }
+                    break;
+                case LMSDictionaryKeyType.None:
+                    throw new("The Key Type was not aligning the the used function.");
+            }
+        }
+        public void Add(int key, T value)
+        {
+            if (Type != LMSDictionaryKeyType.Indices)
+                throw new("The Key Type was not aligning the the used function.");
+
+            dictionary.Add(key, value);
+        }
+        public void Add(T value)
+        {
+            if (Type != LMSDictionaryKeyType.None)
+                throw new("The Key Type was not aligning the the used function.");
+
+            dictionary.Add((long)dictionary.Count > 0 ? (long)dictionary.Keys.Last() + 1 : 0, value);
+        }
+        #endregion
+
+        #region Enumerator
+        public IEnumerator<KeyValuePair<object, T>> GetEnumerator()
+        {
+            return dictionary.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return this.GetEnumerator();
+        }
+        #endregion
+
+        public bool TryGetValue(object key, [MaybeNullWhen(false)] out T value)
+        {
+            return dictionary.TryGetValue(key, out value);
+        }
+
+        #region Contains
+        public bool Contains(KeyValuePair<object, T> item)
+        {
+            if (dictionary.ContainsKey(item.Key))
+            {
+                if (item.Value.Equals(dictionary[item.Key]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        public bool ContainsKey(object key)
+        {
+            return dictionary.ContainsKey(key);
+        }
+        #endregion
+
+        #region Remove
+        public bool Remove(object key)
+        {
+            return dictionary.Remove(key);
+        }
+        public bool Remove(KeyValuePair<object, T> item)
+        {
+            if (dictionary.ContainsKey(item.Key))
+            {
+                if (item.Value.Equals(dictionary[item.Key]))
+                {
+                    return dictionary.Remove(item.Key);
+                }
+            }
+
+            return false;
+        }
+        #endregion
+
+        public void Clear()
+        {
+            dictionary.Clear();
+        }
+
+        public void CopyTo(KeyValuePair<object, T>[] array, int arrayIndex)
+        {
+            throw new NotImplementedException();
+        }
+    }
+    #endregion
+
     #region msbt
     public static class TagTools
     {
@@ -439,13 +707,13 @@ namespace CLMS
                 {
                     if (cParam is string)
                     {
-                        text += ((string)cParam).Replace("<", "\\<");
+                        text += ((string)cParam).Replace($"{Tag.SeparatorChars[0]}", $"\\{Tag.SeparatorChars[0]}");
                     }
                     if (cParam is Tag)
                     {
                         Tag tag = (Tag)cParam;
 
-                        text += $"<Tag_{tagCount}>";
+                        text += $"{Tag.SeparatorChars[0]}Tag_{tagCount}{Tag.SeparatorChars[1]}";
 
                         tagCount++;
                     }
@@ -453,7 +721,7 @@ namespace CLMS
                     {
                         TagEnd tagEnd = (TagEnd)cParam;
 
-                        text += $"</Tag_{tagCount - 1}>";
+                        text += $"{Tag.SeparatorChars[0]}/Tag_{tagCount - 1}{Tag.SeparatorChars[1]}";
                     }
                 }
 
@@ -470,7 +738,7 @@ namespace CLMS
                 {
                     bool processTag = false;
                     bool processTagEnd = false;
-                    if (value[i] == '<')
+                    if (value[i] == Tag.SeparatorChars[0])
                     {
                         if (lastChar == '\\')
                         {
@@ -491,7 +759,7 @@ namespace CLMS
 
                     if (processTag)
                     {
-                        string tagIdStr = value.Substring(i + 5, value.IndexOf('>', i + 5) - i - 5);
+                        string tagIdStr = value.Substring(i + 5, value.IndexOf(Tag.SeparatorChars[1], i + 5) - i - 5);
                         int tagId = Convert.ToInt32(tagIdStr);
 
                         // proper exception handling yay :)
@@ -512,7 +780,7 @@ namespace CLMS
                     }
                     else if (processTagEnd)
                     {
-                        string tagIdStr = value.Substring(i + 6, value.IndexOf('>', i + 6) - i - 6);
+                        string tagIdStr = value.Substring(i + 6, value.IndexOf(Tag.SeparatorChars[1], i + 6) - i - 6);
                         int tagId = Convert.ToInt32(tagIdStr);
 
                         // proper exception handling yay :)
@@ -683,6 +951,8 @@ namespace CLMS
     }
     public class Tag // Regions have not yet been implemented in the best way but work for the moment
     {
+        internal static readonly char[] SeparatorChars = { '<', '>' }; // could also be "{ '[', ']' }" e.g.
+
         /// <summary>
         /// The group of a tag.
         /// </summary>
@@ -706,11 +976,7 @@ namespace CLMS
         ///// </summary>
         //public uint RegionSize;
 
-
-        public Tag()
-        {
-
-        }
+        public Tag() { }
         public Tag(TagConfig aTagConfig)
         {
             Group = aTagConfig.Group;
@@ -1078,7 +1344,6 @@ namespace CLMS
     /// <summary>
     /// The Type of a value gives info on how to process that data.
     /// </summary>
-    /// <typeparam name="T"></typeparam>
     public enum ParamType : byte
     {
         Uint8,
@@ -1093,267 +1358,6 @@ namespace CLMS
         List
     }
 
-    /// <summary>
-    /// Specifies the type of key / if keys are used to store data.
-    /// </summary>
-    public enum LMSDictionaryKeyType
-    {
-        /// <summary>
-        /// Data uses string labels as keys.
-        /// </summary>
-        Labels = 0x1,
-        /// <summary>
-        /// Data uses an indices table (NL1 section) *Only used in MSBTs(?) as keys.
-        /// </summary>
-        Indices = 0x2,
-        /// <summary>
-        /// Data doesnt use the keys(labels) but goes after the index.
-        /// </summary>
-        None = 0x4
-    }
-    public class LMSDictionary<T> : IDictionary<object, T>
-    {
-        private Dictionary<object, T> dictionary = new Dictionary<object, T>();
-        private LMSDictionaryKeyType disabledKeyTypes;
-        private LMSDictionaryKeyType type = LMSDictionaryKeyType.Labels;
-
-        public LMSDictionaryKeyType Type
-        {
-            get { return type; }
-            set
-            {
-                // Check if the provided value is one of the disabled key types
-                if ((disabledKeyTypes & value) != 0)
-                {
-                    throw new InvalidOperationException($"The key type {value} is disabled for this dictionary.");
-                }
-                type = value;
-            }
-
-        }
-        public T this[object key]
-        {
-            get
-            {
-                switch (Type)
-                {
-                    case LMSDictionaryKeyType.Labels:
-                        return dictionary[(string)key];
-                    case LMSDictionaryKeyType.Indices:
-                        if (key is string)
-                        {
-                            if (int.TryParse((string)key, out int result))
-                            {
-                                return dictionary[result];
-                            }
-                        }
-                        else if (key is int)
-                        {
-                            return dictionary[(int)key];
-                        }
-                        throw new("Key was not an integer or a parsable string.");
-                    case LMSDictionaryKeyType.None:
-                        return dictionary.Values.ToArray()[(int)key];
-                }
-
-                return default;
-            }
-            set
-            {
-                switch (Type)
-                {
-                    case LMSDictionaryKeyType.Labels:
-                        dictionary[(string)key] = value;
-                        break;
-                    case LMSDictionaryKeyType.Indices:
-                        if (key is string)
-                        {
-                            if (int.TryParse((string)key, out int result))
-                            {
-                                dictionary[result] = value;
-                                break;
-                            }
-                        }
-                        else if (key is int)
-                        {
-                            dictionary[(int)key] = value;
-                            break;
-                        }
-                        throw new("Key was not an integer or a parsable string.");
-                    case LMSDictionaryKeyType.None:
-                        dictionary[dictionary.Keys.ToArray()[(int)key]] = value;
-                        break;
-                }
-            }
-        }
-        public int Count
-        {
-            get
-            {
-                return dictionary.Count;
-            }
-        }
-
-        public bool IsReadOnly => false;
-
-        #region Keys/Values
-        public Dictionary<object, T>.KeyCollection Keys
-        {
-            get
-            {
-                return dictionary.Keys;
-            }
-        }
-        public Dictionary<object, T>.ValueCollection Values
-        {
-            get
-            {
-                return dictionary.Values;
-            }
-        }
-
-        ICollection<object> IDictionary<object, T>.Keys => dictionary.Keys;
-        ICollection<T> IDictionary<object, T>.Values => dictionary.Values;
-
-        public IEnumerable<string> KeysAsLabels()
-        {
-            if (Type != LMSDictionaryKeyType.Labels)
-                throw new InvalidOperationException("Key Type must be Labels to use KeysAsLabels.");
-
-            return dictionary.Keys.Select(k => (string)k);
-        }
-        public IEnumerable<int> KeysAsIndices()
-        {
-            if (Type != LMSDictionaryKeyType.Indices)
-                throw new InvalidOperationException("Key Type must be Indices to use KeysAsIndices.");
-
-            return dictionary.Keys.Select(k => (int)k);
-        }
-        #endregion
-
-        public LMSDictionary(LMSDictionaryKeyType disabledKeyTypes = 0)
-        {
-            this.disabledKeyTypes = disabledKeyTypes;
-        }
-
-        #region Add
-        public void Add(KeyValuePair<object, T> item)
-        {
-            dictionary.Add(item.Key, item.Value);
-        }
-        public void Add(object key, T value)
-        {
-            if (key is string)
-            {
-                Add((string)key, value);
-            }
-            else if (key is int)
-            {
-                Add((int)key, value);
-            }
-        }
-        public void Add(string key, T value)
-        {
-            switch (Type)
-            {
-                case LMSDictionaryKeyType.Labels:
-                    dictionary.Add(key, value);
-                    break;
-                case LMSDictionaryKeyType.Indices:
-                    if (int.TryParse((string)key, out int result))
-                    {
-                        dictionary.Add(result, value);
-                    }
-                    else
-                    {
-                        throw new("The Key was not parsable to an integer.");
-                    }
-                    break;
-                case LMSDictionaryKeyType.None:
-                    throw new("The Key Type was not aligning the the used function.");
-            }
-        }
-        public void Add(int key, T value)
-        {
-            if (Type != LMSDictionaryKeyType.Indices)
-                throw new("The Key Type was not aligning the the used function.");
-
-            dictionary.Add(key, value);
-        }
-        public void Add(T value)
-        {
-            if (Type != LMSDictionaryKeyType.None)
-                throw new("The Key Type was not aligning the the used function.");
-
-            dictionary.Add((long)dictionary.Count > 0 ? (long)dictionary.Keys.Last() + 1 : 0, value);
-        }
-        #endregion
-
-        #region Enumerator
-        public IEnumerator<KeyValuePair<object, T>> GetEnumerator()
-        {
-            return dictionary.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return this.GetEnumerator();
-        }
-        #endregion
-
-        public bool TryGetValue(object key, [MaybeNullWhen(false)] out T value)
-        {
-            return dictionary.TryGetValue(key, out value);
-        }
-
-        #region Contains
-        public bool Contains(KeyValuePair<object, T> item)
-        {
-            if (dictionary.ContainsKey(item.Key))
-            {
-                if (item.Value.Equals(dictionary[item.Key]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        public bool ContainsKey(object key)
-        {
-            return dictionary.ContainsKey(key);
-        }
-        #endregion
-
-        #region Remove
-        public bool Remove(object key)
-        {
-            return dictionary.Remove(key);
-        }
-        public bool Remove(KeyValuePair<object, T> item)
-        {
-            if (dictionary.ContainsKey(item.Key))
-            {
-                if (item.Value.Equals(dictionary[item.Key]))
-                {
-                    return dictionary.Remove(item.Key);
-                }
-            }
-
-            return false;
-        }
-        #endregion
-
-        public void Clear()
-        {
-            dictionary.Clear();
-        }
-
-        public void CopyTo(KeyValuePair<object, T>[] array, int arrayIndex)
-        {
-            throw new NotImplementedException();
-        }
-    }
     internal class LabelSection
     {
         public uint SlotNum;
@@ -1368,10 +1372,7 @@ namespace CLMS
         public ushort NumberOfSections;
         public uint FileSize;
 
-        public Header()
-        {
-
-        }
+        public Header() { }
         public Header(BinaryDataReader bdr)
         {
             bdr.ByteOrder = ByteOrder.BigEndian;

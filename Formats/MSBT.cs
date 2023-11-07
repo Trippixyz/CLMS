@@ -127,14 +127,14 @@ namespace CLMS
                 {
                     if (cParam is string)
                     {
-                        text += ((string)cParam).Replace("<", "\\<");
+                        text += ((string)cParam).Replace($"{Tag.SeparatorChars[0]}", $"\\{Tag.SeparatorChars[0]}");
                     }
                     if (cParam is Tag)
                     {
                         Tag tag = (Tag)cParam;
 
                         // TODO: fix this to be /> if there wont be a TagEnd (quite a hard challenge)
-                        text += $"<Tag_{tagCount}>";
+                        text += $"{Tag.SeparatorChars[0]}Tag_{tagCount}{Tag.SeparatorChars[1]}";
 
                         YamlMappingNode tagNode = new();
 
@@ -149,7 +149,7 @@ namespace CLMS
                     {
                         TagEnd tagEnd = (TagEnd)cParam;
 
-                        text += $"</Tag_{tagCount - 1}>";
+                        text += $"{Tag.SeparatorChars[0]}/Tag_{tagCount - 1}{Tag.SeparatorChars[1]}";
 
                         YamlMappingNode tagNode = (YamlMappingNode)tagsNode.ChildrenByKey($"Tag_{tagCount - 1}");
 
@@ -172,7 +172,7 @@ namespace CLMS
                 }
 
                 messageNode.Add("Contents", text);
-                if (tagCount > 0)
+                if (item.Value.TagCount > 0)
                 {
                     messageNode.Add("Tags", tagsNode);
                 }
@@ -224,7 +224,7 @@ namespace CLMS
         {
             MSBT msbt = new();
 
-            YamlMappingNode root = LoadYamlDocument(yaml);
+            YamlMappingNode root = YamlExtensions.LoadYamlDocument(yaml);
             foreach (var rootChild in root.Children)
             {
                 var key = ((YamlScalarNode)rootChild.Key).Value;
@@ -355,7 +355,7 @@ namespace CLMS
                                     {
                                         bool processTag = false;
                                         bool processTagEnd = false;
-                                        if (contentsValue[i] == '<')
+                                        if (contentsValue[i] == Tag.SeparatorChars[0])
                                         {
                                             if (lastChar == '\\')
                                             {
@@ -376,7 +376,7 @@ namespace CLMS
 
                                         if (processTag)
                                         {
-                                            string tagId = contentsValue.Substring(i + 1, contentsValue.IndexOf('>', i + 1) - i - 1);
+                                            string tagId = contentsValue.Substring(i + 1, contentsValue.IndexOf(Tag.SeparatorChars[1], i + 1) - i - 1);
 
                                             // proper exception handling yay :)
                                             if (!tags.ContainsKey(tagId))
@@ -396,7 +396,7 @@ namespace CLMS
                                         }
                                         else if (processTagEnd)
                                         {
-                                            string tagId = contentsValue.Substring(i + 2, contentsValue.IndexOf('>', i + 2) - i - 2);
+                                            string tagId = contentsValue.Substring(i + 2, contentsValue.IndexOf(Tag.SeparatorChars[1], i + 2) - i - 2);
 
                                             // proper exception handling yay :)
                                             if (!tags.ContainsKey(tagId))
@@ -431,7 +431,7 @@ namespace CLMS
                             }
                             else
                             {
-                                message.Contents.Add(contentsNode.ToString().Replace("\\<", "<"));
+                                message.Contents.Add(contentsNode.ToString().Replace($"\\{Tag.SeparatorChars[0]}", $"{Tag.SeparatorChars[0]}"));
                             }
 
                             msbt.Messages.Add(messageChild.Key.ToString(), message);
@@ -666,7 +666,7 @@ namespace CLMS
                 }
                 bdr.Position = cPositionBuf;
                 bdr.SkipBytes(cSectionSize);
-                bdr.AlignPos(0x10);
+                bdr.Align(0x10);
             }
 
             Messages.Type = LMSDictionaryKeyType.None;
@@ -968,7 +968,7 @@ namespace CLMS
             Header.OverrideStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
 
             //return ((MemoryStream)bdw.BaseStream).ToArray(); // this is slightly less efficient so I scrapped it!
-            return ReadFully(stm);
+            return StreamToByteArray(stm);
         }
         private void WriteLBL1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
         {

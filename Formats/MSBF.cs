@@ -68,7 +68,7 @@ namespace CLMS
                 }
                 bdr.Position = cPositionBuf;
                 bdr.SkipBytes(cSectionSize);
-                bdr.AlignPos(0x10);
+                bdr.Align(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -232,7 +232,7 @@ namespace CLMS
 
             Header.OverrideStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
 
-            return ReadFully(stm);
+            return StreamToByteArray(stm);
         }
 
         #endregion

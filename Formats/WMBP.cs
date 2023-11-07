@@ -76,7 +76,7 @@ namespace CLMS
                 }
                 bdr.Position = cPositionBuf;
                 bdr.SkipBytes(cSectionSize);
-                bdr.AlignPos(0x10);
+                bdr.Align(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -101,7 +101,7 @@ namespace CLMS
 
             long startPosition = bdr.Position;
             uint languagesNum = bdr.ReadUInt32();
-            bdr.AlignPos(0x10);
+            bdr.Align(0x10);
             result.Languages = new Language[languagesNum];
 
             for (uint i = 0; i < languagesNum; i++)
@@ -115,7 +115,7 @@ namespace CLMS
                 string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
 
                 bdr.SkipByte();
-                bdr.AlignPos(0x10);
+                bdr.Align(0x10);
 
                 result.Languages[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
 
@@ -130,7 +130,7 @@ namespace CLMS
 
             long startPosition = bdr.Position;
             uint languageStylesNum = bdr.ReadUInt32();
-            bdr.AlignPos(0x10);
+            bdr.Align(0x10);
             result.LanguageStyles = new LanguageStyle[numberOfLanguages][];
 
             for (uint i = 0; i < numberOfLanguages; i++)
@@ -160,7 +160,7 @@ namespace CLMS
 
             long startPosition = bdr.Position;
             uint fontsNum = bdr.ReadUInt32();
-            bdr.AlignPos(0x10);
+            bdr.Align(0x10);
             result.Fonts = new Font[fontsNum];
 
             for (uint i = 0; i < fontsNum; i++)
@@ -174,7 +174,7 @@ namespace CLMS
                 string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
 
                 bdr.SkipByte();
-                bdr.AlignPos(0x10);
+                bdr.Align(0x10);
 
                 result.Fonts[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
 
