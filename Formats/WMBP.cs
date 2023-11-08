@@ -31,7 +31,7 @@ namespace CLMS
         #region reading code
         protected override void Read(Stream stm)
         {
-            var bdr = CreateReadEnvironment(stm);
+            var reader = CreateReadEnvironment(stm);
 
             #region checkers
 
@@ -51,32 +51,32 @@ namespace CLMS
 
             for (int i = 0; i < Header.NumberOfSections; i++)
             {
-                string cSectionMagic = bdr.ReadASCIIString(4);
-                uint cSectionSize = bdr.ReadUInt32();
-                bdr.SkipBytes(8);
-                long cPositionBuf = bdr.Position;
+                string cSectionMagic = reader.ReadASCIIString(4);
+                uint cSectionSize = reader.ReadUInt32();
+                reader.SkipBytes(8);
+                long cPositionBuf = reader.Position;
                 switch (cSectionMagic)
                 {
                     case "WLNG":
                         isWLNG = true;
 
-                        wlng = ReadWLNG(bdr);
+                        wlng = ReadWLNG(reader);
                         break;
                     case "WSYL":
                         isWSYL = true;
 
-                        wsyl = ReadWSYL(bdr, wlng.Languages.Length);
+                        wsyl = ReadWSYL(reader, wlng.Languages.Length);
                         break;
                     case "WFNT":
                         isWFNT = true;
 
-                        wfnt = ReadWFNT(bdr);
+                        wfnt = ReadWFNT(reader);
                         break;
 
                 }
-                bdr.Position = cPositionBuf;
-                bdr.SkipBytes(cSectionSize);
-                bdr.Align(0x10);
+                reader.Position = cPositionBuf;
+                reader.SkipBytes(cSectionSize);
+                reader.Align(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -95,42 +95,42 @@ namespace CLMS
                 Fonts = wfnt.Fonts.ToList();
             }
         }
-        private WLNG ReadWLNG(BinaryDataReader bdr)
+        private WLNG ReadWLNG(BinaryDataReader reader)
         {
             WLNG result = new();
 
-            long startPosition = bdr.Position;
-            uint languagesNum = bdr.ReadUInt32();
-            bdr.Align(0x10);
+            long startPosition = reader.Position;
+            uint languagesNum = reader.ReadUInt32();
+            reader.Align(0x10);
             result.Languages = new Language[languagesNum];
 
             for (uint i = 0; i < languagesNum; i++)
             {
-                uint cLanguageOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cLanguageOffset;
+                uint cLanguageOffset = reader.ReadUInt32();
+                long positionBuf = reader.Position;
+                reader.Position = startPosition + cLanguageOffset;
 
-                ushort cLanguageIndex = bdr.ReadUInt16();
-                byte cLanguageUnk0 = bdr.ReadByte();
-                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+                ushort cLanguageIndex = reader.ReadUInt16();
+                byte cLanguageUnk0 = reader.ReadByte();
+                string cLanguageName = reader.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
 
-                bdr.SkipByte();
-                bdr.Align(0x10);
+                reader.SkipByte();
+                reader.Align(0x10);
 
                 result.Languages[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
 
-                bdr.Position = positionBuf;
+                reader.Position = positionBuf;
             }
 
             return result;
         }
-        private WSYL ReadWSYL(BinaryDataReader bdr, int numberOfLanguages)
+        private WSYL ReadWSYL(BinaryDataReader reader, int numberOfLanguages)
         {
             WSYL result = new();
 
-            long startPosition = bdr.Position;
-            uint languageStylesNum = bdr.ReadUInt32();
-            bdr.Align(0x10);
+            long startPosition = reader.Position;
+            uint languageStylesNum = reader.ReadUInt32();
+            reader.Align(0x10);
             result.LanguageStyles = new LanguageStyle[numberOfLanguages][];
 
             for (uint i = 0; i < numberOfLanguages; i++)
@@ -140,45 +140,45 @@ namespace CLMS
 
             for (uint i = 0; i < languageStylesNum; i++)
             {
-                uint cLanguageStyleOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cLanguageStyleOffset;
+                uint cLanguageStyleOffset = reader.ReadUInt32();
+                long positionBuf = reader.Position;
+                reader.Position = startPosition + cLanguageStyleOffset;
 
                 for (uint j = 0; j < numberOfLanguages; j++)
                 {
-                    result.LanguageStyles[j][i] = new(bdr.ReadBytes(0x40));
+                    result.LanguageStyles[j][i] = new(reader.ReadBytes(0x40));
                 }
 
-                bdr.Position = positionBuf;
+                reader.Position = positionBuf;
             }
 
             return result;
         }
-        private WFNT ReadWFNT(BinaryDataReader bdr)
+        private WFNT ReadWFNT(BinaryDataReader reader)
         {
             WFNT result = new();
 
-            long startPosition = bdr.Position;
-            uint fontsNum = bdr.ReadUInt32();
-            bdr.Align(0x10);
+            long startPosition = reader.Position;
+            uint fontsNum = reader.ReadUInt32();
+            reader.Align(0x10);
             result.Fonts = new Font[fontsNum];
 
             for (uint i = 0; i < fontsNum; i++)
             {
-                uint cFontOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.Position;
-                bdr.Position = startPosition + cFontOffset;
+                uint cFontOffset = reader.ReadUInt32();
+                long positionBuf = reader.Position;
+                reader.Position = startPosition + cFontOffset;
 
-                ushort cLanguageIndex = bdr.ReadUInt16();
-                byte cLanguageUnk0 = bdr.ReadByte();
-                string cLanguageName = bdr.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
+                ushort cLanguageIndex = reader.ReadUInt16();
+                byte cLanguageUnk0 = reader.ReadByte();
+                string cLanguageName = reader.ReadString(BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
 
-                bdr.SkipByte();
-                bdr.Align(0x10);
+                reader.SkipByte();
+                reader.Align(0x10);
 
                 result.Fonts[cLanguageIndex] = new(cLanguageName, cLanguageUnk0);
 
-                bdr.Position = positionBuf;
+                reader.Position = positionBuf;
             }
 
             return result;
