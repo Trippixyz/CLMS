@@ -1,4 +1,5 @@
 ﻿using Syroot.BinaryData;
+using Syroot.BinaryData.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,10 +15,10 @@ namespace CLMS
         /// <summary>
         /// Reads a string with the ASCII encoding with a specific length.
         /// </summary>
-        /// <param name="reader">The BinaryDataReader</param>
+        /// <param name="reader">The BinaryStream</param>
         /// <param name="length">The amount of characters to read</param>
         /// <returns>The read ASCII string</returns>
-        public static string ReadASCIIString(this BinaryDataReader reader, int length)
+        public static string ReadASCIIString(this BinaryStream reader, int length)
         {
             return Encoding.ASCII.GetString(reader.ReadBytes(length));
         }
@@ -28,18 +29,18 @@ namespace CLMS
         /// <summary>
         /// Peeks a specific number of characters.
         /// </summary>
-        /// <param name="reader">The BinaryDataReader</param>
+        /// <param name="reader">The BinaryStream</param>
         /// <param name="count">The amount of characters to peek</param>
         /// <returns>The peeked characters</returns>
-        public static char[] PeekChars(this BinaryDataReader reader, int count)
+        public static char[] PeekChars(this BinaryStream reader, int count)
         {
-            char[] buf = reader.ReadChars(count);
+            char[] buf = Encoding.ASCII.GetString(reader.ReadBytes(count)).ToCharArray();
             SkipBytesN(reader, count);
             return buf;
         }
         #endregion
 
-        public static void Align(this BinaryDataWriter writer, int alignmentSize, byte alignmentByte)
+        public static void Align(this BinaryStream writer, int alignmentSize, byte alignmentByte)
         {
             if (alignmentSize <= 0)
             {
@@ -53,7 +54,7 @@ namespace CLMS
             }
         }
 
-        public static void WriteBytes(this BinaryDataWriter writer, int amount, byte Byte)
+        public static void WriteBytes(this BinaryStream writer, int amount, byte Byte)
         {
             for (int i = 0; i < amount; i++)
             {
@@ -61,17 +62,17 @@ namespace CLMS
             }
         }
 
-        public static void WriteASCIIString(this BinaryDataWriter writer, string asciiString)
+        public static void WriteASCIIString(this BinaryStream writer, string asciiString)
         {
-            writer.Write(asciiString, BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+            writer.Write(asciiString, StringCoding.Raw, Encoding.ASCII);
         }
 
-        public static void WriteChar(this BinaryDataWriter writer, int value)
+        public static void WriteChar(this BinaryStream writer, int value)
         {
-            writer.Write(Convert.ToChar(value).ToString(), BinaryStringFormat.NoPrefixOrTermination);
+            writer.Write(Convert.ToChar(value).ToString(), StringCoding.Raw);
         }
 
-        public static void GoBackWriteRestore(this BinaryDataWriter writer, long goBackPosition, dynamic varToWrite)
+        public static void GoBackWriteRestore(this BinaryStream writer, long goBackPosition, dynamic varToWrite)
         {
             long PositionBuf = writer.Position;
             writer.Position = goBackPosition;
@@ -82,17 +83,17 @@ namespace CLMS
 
         #region Check
         #region Magic
-        public static bool CheckMagic(this BinaryDataReader reader, string neededMagic)
+        public static bool CheckMagic(this BinaryStream reader, string neededMagic)
         {
-            return new string(reader.ReadChars(neededMagic.Length)) == neededMagic;
+            return Encoding.ASCII.GetString(reader.ReadBytes(neededMagic.Length)) == neededMagic;
         }
         public static bool CheckMagic(this BinaryReader reader, string neededMagic)
         {
             return new string(reader.ReadChars(neededMagic.Length)) == neededMagic;
         }
-        public static bool PeekCheckMagic(this BinaryDataReader reader, string neededMagic)
+        public static bool PeekCheckMagic(this BinaryStream reader, string neededMagic)
         {
-            bool buf = new string(reader.ReadChars(neededMagic.Length)) == neededMagic;
+            bool buf = Encoding.ASCII.GetString(reader.ReadBytes(neededMagic.Length)) == neededMagic;
             SkipBytesN(reader, neededMagic.Length);
             return buf;
         }
@@ -105,17 +106,17 @@ namespace CLMS
         #endregion
 
         #region ByteOrder
-        public static ByteOrder CheckByteOrder(this Stream stream)
+        public static Endian CheckByteOrder(this Stream stream)
         {
             byte byte1 = Convert.ToByte(stream.ReadByte());
             stream.ReadByte();
             if (byte1 == 0xFF)
             {
-                return ByteOrder.LittleEndian;
+                return Endian.Little;
             }
             else
             {
-                return ByteOrder.BigEndian;
+                return Endian.Big;
             }
         }
         #endregion
@@ -125,8 +126,8 @@ namespace CLMS
         /// <summary>
         /// Skips a single byte.
         /// </summary>
-        /// <param name="reader">The BinaryDataReader</param>
-        public static void SkipByte(this BinaryDataReader reader)
+        /// <param name="reader">The BinaryStream</param>
+        public static void SkipByte(this BinaryStream reader)
         {
             reader.Position++;
         }
@@ -134,8 +135,8 @@ namespace CLMS
         /// <summary>
         /// Skips back a single byte.
         /// </summary>
-        /// <param name="reader">The BinaryDataReader</param>
-        public static void SkipByteN(this BinaryDataReader reader)
+        /// <param name="reader">The BinaryStream</param>
+        public static void SkipByteN(this BinaryStream reader)
         {
             reader.Position--;
         }
@@ -143,9 +144,9 @@ namespace CLMS
         /// <summary>
         /// Skips bytes.
         /// </summary>
-        /// <param name="reader"></param>
+        /// <param name="reader">The BinaryStream</param>
         /// <param name="count">The amount of bytes to get skipped</param>
-        public static void SkipBytes(this BinaryDataReader reader, long count)
+        public static void SkipBytes(this BinaryStream reader, long count)
         {
             reader.Position += count;
         }
@@ -153,41 +154,29 @@ namespace CLMS
         /// <summary>
         /// Skips back bytes.
         /// </summary>
-        /// <param name="reader">The BinaryDataReader</param>
+        /// <param name="reader">The BinaryStream</param>
         /// <param name="count">The amount of bytes to get skipped</param>
-        public static void SkipBytesN(this BinaryDataReader reader, long count)
+        public static void SkipBytesN(this BinaryStream reader, long count)
         {
             reader.Position -= count;
         }
         #endregion
 
         #region Misc
-        public static void FlipByteOrder(this BinaryDataReader reader)
+        public static void FlipByteOrder(this BinaryStream stream)
         {
-            switch (reader.ByteOrder)
+            switch (stream.ByteConverter.Endian)
             {
-                case ByteOrder.LittleEndian: reader.ByteOrder = ByteOrder.BigEndian; break;
-                case ByteOrder.BigEndian: reader.ByteOrder = ByteOrder.LittleEndian; break;
-            }
-        }
-        public static void FlipByteOrder(this BinaryDataWriter writer)
-        {
-            switch (writer.ByteOrder)
-            {
-                case ByteOrder.LittleEndian: writer.ByteOrder = ByteOrder.BigEndian; break;
-                case ByteOrder.BigEndian: writer.ByteOrder = ByteOrder.LittleEndian; break;
+                case Endian.Little: stream.ByteConverter = ByteConverter.Big; break;
+                case Endian.Big: stream.ByteConverter = ByteConverter.Little; break;
             }
         }
         #endregion
 
         #region Debug
-        public static void LogPosition(this BinaryDataReader writer)
+        public static void LogPosition(this BinaryStream stream)
         {
-            Console.WriteLine("Pos: " + writer.Position);
-        }
-        public static void LogPosition(this BinaryDataWriter writer)
-        {
-            Console.WriteLine("Pos: " + writer.Position);
+            Console.WriteLine("Pos: " + stream.Position);
         }
         #endregion
     }

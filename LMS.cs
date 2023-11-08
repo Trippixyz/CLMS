@@ -1,4 +1,5 @@
 ﻿using Syroot.BinaryData;
+using Syroot.BinaryData.Core;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -22,7 +23,7 @@ namespace CLMS
     public abstract class LMSBase
     {
         // general
-        public ByteOrder ByteOrder
+        public Endian ByteOrder
         {
             get { return Header.ByteOrder; }
             set { Header.ByteOrder = value; }
@@ -40,13 +41,13 @@ namespace CLMS
                 {
                     case EncodingType.UTF8: return Encoding.UTF8;
                     case EncodingType.UTF16:
-                        if (Header.ByteOrder == ByteOrder.BigEndian)
+                        if (Header.ByteOrder == Endian.Big)
                         {
                             return Encoding.BigEndianUnicode;
                         }
                         return Encoding.Unicode;
                     case EncodingType.UTF32:
-                        if (Header.ByteOrder == ByteOrder.BigEndian)
+                        if (Header.ByteOrder == Endian.Big)
                         {
                             return new UTF32Encoding(true, true);
                         }
@@ -73,12 +74,12 @@ namespace CLMS
                 switch (preamble[0])
                 {
                     case 0xFF:
-                        ByteOrder = ByteOrder.LittleEndian;
+                        ByteOrder = Endian.Little;
                         break;
 
                     case 0x00:
                     case 0xFE:
-                        ByteOrder = ByteOrder.BigEndian;
+                        ByteOrder = Endian.Big;
                         break;
                 }
             }
@@ -101,7 +102,7 @@ namespace CLMS
         private protected Header Header;
         #endregion
 
-        public LMSBase(FileType aFileType, ByteOrder aByteOrder = ByteOrder.LittleEndian, byte aVersionNumber = 3)
+        public LMSBase(FileType aFileType, Endian aByteOrder = Endian.Little, byte aVersionNumber = 3)
         {
             Header = new();
             Header.FileType = aFileType;
@@ -113,7 +114,7 @@ namespace CLMS
 
             Encoding = Encoding.Unicode;
         }
-        public LMSBase(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader, FileType aFileType, byte aVersionNumber = 3)
+        public LMSBase(Endian aByteOrder, Encoding aEncoding, bool createDefaultHeader, FileType aFileType, byte aVersionNumber = 3)
         {
             Header = new();
             if (createDefaultHeader)
@@ -148,20 +149,20 @@ namespace CLMS
         protected abstract byte[] Write(bool optimize);
         public abstract byte[] Save(bool optimize = false);
 
-        protected BinaryDataReader CreateReadEnvironment(Stream stm)
+        protected BinaryStream CreateReadEnvironment(Stream stream)
         {
-            Header = new(new(stm));
-            BinaryDataReader bdr = new(stm, Encoding);
-            bdr.ByteOrder = Header.ByteOrder;
-            return bdr;
+            Header = new(new(stream));
+            BinaryStream reader = new(stream, encoding: Encoding);
+            reader.ByteConverter = ByteConverter.GetConverter(Header.ByteOrder);
+            return reader;
         }
-        protected (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) CreateWriteEnvironment()
+        protected (Stream stream, BinaryStream writer, ushort sectionNumber) CreateWriteEnvironment()
         {
-            Stream stm = new MemoryStream();
-            BinaryDataWriter bdw = new(stm, Encoding);
+            Stream stream = new MemoryStream();
+            BinaryStream writer = new(stream, encoding: Encoding);
             ushort sectionNumber = 0;
-            Header.Write(bdw);
-            return (stm, bdw, sectionNumber);
+            Header.Write(writer);
+            return (stream, writer, sectionNumber);
         }
     }
     #endregion
@@ -225,36 +226,36 @@ namespace CLMS
     internal static class LMS
     {
         #region generic
-        public static uint CalcHashTableSlotsNum(BinaryDataReader bdr)
+        public static uint CalcHashTableSlotsNum(BinaryStream reader)
         {
-            long startPosition = bdr.BaseStream.Position;
-            uint hashTableNum = bdr.ReadUInt32();
+            long startPosition = reader.BaseStream.Position;
+            uint hashTableNum = reader.ReadUInt32();
             uint hashtableSlotsNum = 0;
             for (int i = 0; i < hashTableNum; i++)
             {
-                hashtableSlotsNum += bdr.ReadUInt32();
-                bdr.SkipBytes(4);
+                hashtableSlotsNum += reader.ReadUInt32();
+                reader.SkipBytes(4);
             }
 
-            bdr.BaseStream.Position = startPosition;
+            reader.BaseStream.Position = startPosition;
             return hashtableSlotsNum;
         }
-        public static long WriteSectionHeader(BinaryDataWriter bdw, string magic)
+        public static long WriteSectionHeader(BinaryStream writer, string magic)
         {
-            bdw.WriteASCIIString(magic);
-            long sectionSizePosBuf = bdw.Position;
-            bdw.Align(0x10, 0x00);
+            writer.WriteASCIIString(magic);
+            long sectionSizePosBuf = writer.Position;
+            writer.Align(0x10, 0x00);
 
             return sectionSizePosBuf;
         }
-        public static void CalcAndSetSectionSize(BinaryDataWriter bdw, long sectionSizePosBuf)
+        public static void CalcAndSetSectionSize(BinaryStream writer, long sectionSizePosBuf)
         {
-            long positionBuf = bdw.Position;
-            uint sectionSize = (uint)(bdw.Position - (sectionSizePosBuf + 0x0C));
-            bdw.Position = sectionSizePosBuf;
-            bdw.Write(sectionSize);
+            long positionBuf = writer.Position;
+            uint sectionSize = (uint)(writer.Position - (sectionSizePosBuf + 0x0C));
+            writer.Position = sectionSizePosBuf;
+            writer.Write(sectionSize);
 
-            bdw.Position = positionBuf;
+            writer.Position = positionBuf;
         }
         public static uint CalcHash(string label, uint numSlots)
         {
@@ -269,26 +270,26 @@ namespace CLMS
         #endregion
 
         #region shared reading functions
-        public static LabelSection ReadLabels(BinaryDataReader bdr)
+        public static LabelSection ReadLabels(BinaryStream reader)
         {
-            long startPosition = bdr.Position;
+            long startPosition = reader.Position;
             LabelSection result = new();
-            string[] labels = new string[CalcHashTableSlotsNum(bdr)];
-            uint hashSlotNum = bdr.ReadUInt32();
+            string[] labels = new string[CalcHashTableSlotsNum(reader)];
+            uint hashSlotNum = reader.ReadUInt32();
             for (uint i = 0; i < hashSlotNum; i++)
             {
-                uint cHashEntryNum = bdr.ReadUInt32();
-                uint cHashOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.BaseStream.Position;
+                uint cHashEntryNum = reader.ReadUInt32();
+                uint cHashOffset = reader.ReadUInt32();
+                long positionBuf = reader.BaseStream.Position;
 
-                bdr.Position = startPosition + cHashOffset;
+                reader.Position = startPosition + cHashOffset;
                 for (uint j = 0; j < cHashEntryNum; j++)
                 {
-                    byte cLabelLength = bdr.ReadByte();
-                    string cLabelString = bdr.ReadASCIIString(cLabelLength);
-                    labels[(int)bdr.ReadUInt32()] = cLabelString;
+                    byte cLabelLength = reader.Read1Byte();
+                    string cLabelString = reader.ReadASCIIString(cLabelLength);
+                    labels[(int)reader.ReadUInt32()] = cLabelString;
                 }
-                bdr.Position = positionBuf;
+                reader.Position = positionBuf;
             }
 
             result.SlotNum = hashSlotNum;
@@ -299,17 +300,17 @@ namespace CLMS
         #endregion
 
         #region shared writing functions
-        public static void WriteLabels(BinaryDataWriter bdw, uint hashSlotNum, string[] labels, bool optimize)
+        public static void WriteLabels(BinaryStream writer, uint hashSlotNum, string[] labels, bool optimize)
         {
             if (optimize)
             {
-                bdw.Write(1);
-                bdw.Write((uint)labels.Length);
-                bdw.Write(0x0C);
+                writer.Write(1);
+                writer.Write((uint)labels.Length);
+                writer.Write(0x0C);
                 for (uint i = 0; i < labels.Length; i++)
                 {
-                    bdw.Write(labels[i], BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
-                    bdw.Write(i);
+                    writer.Write(labels[i], StringCoding.ByteCharCount, Encoding.ASCII);
+                    writer.Write(i);
                 }
             }
             else // no implementation yet sry :/  (WHO WOULD NOT OPTIMIZE...) (ok now its there)
@@ -320,7 +321,7 @@ namespace CLMS
                     throw new("SlotNum cannot be 0!");
                 }
 
-                bdw.Write(hashSlotNum);
+                writer.Write(hashSlotNum);
 
                 Dictionary<uint, List<string>> result = new();
                 for (int i = 0; i < labels.Length; i++)
@@ -345,8 +346,8 @@ namespace CLMS
                 {
                     if (ordered.ContainsKey(i))
                     {
-                        bdw.Write(ordered[i].Count);
-                        bdw.Write(offsetToLabels);
+                        writer.Write(ordered[i].Count);
+                        writer.Write(offsetToLabels);
 
                         foreach (string cLabel in ordered[i])
                         {
@@ -355,8 +356,8 @@ namespace CLMS
                     }
                     else
                     {
-                        bdw.Write(0);
-                        bdw.Write(offsetToLabels);
+                        writer.Write(0);
+                        writer.Write(offsetToLabels);
                     }
                 }
                 foreach (var cKeyValuePair in ordered)
@@ -364,8 +365,8 @@ namespace CLMS
                     foreach (string cLabel in cKeyValuePair.Value)
                     {
                         int cLabelIndex = Array.IndexOf(labels, cLabel);
-                        bdw.Write(labels[cLabelIndex], BinaryStringFormat.ByteLengthPrefix, Encoding.ASCII);
-                        bdw.Write(cLabelIndex);
+                        writer.Write(labels[cLabelIndex], StringCoding.ByteCharCount, Encoding.ASCII);
+                        writer.Write(cLabelIndex);
                     }
                 }
             }
@@ -1366,17 +1367,17 @@ namespace CLMS
     internal class Header
     {
         public FileType FileType;
-        public ByteOrder ByteOrder;
+        public Endian ByteOrder;
         public EncodingType EncodingType;
         public byte VersionNumber;
         public ushort NumberOfSections;
         public uint FileSize;
 
         public Header() { }
-        public Header(BinaryDataReader bdr)
+        public Header(BinaryStream reader)
         {
-            bdr.ByteOrder = ByteOrder.BigEndian;
-            string magic = bdr.ReadASCIIString(8);
+            reader.ByteConverter = ByteConverter.GetConverter(Endian.Big);
+            string magic = reader.ReadASCIIString(8);
             switch (magic)
             {
                 case "MsgStdBn":
@@ -1392,52 +1393,52 @@ namespace CLMS
                     FileType = FileType.WMBP;
                     break;
             }
-            ByteOrder = (ByteOrder)bdr.ReadUInt16();
-            bdr.ByteOrder = ByteOrder;
-            bdr.ReadUInt16();
-            EncodingType = (EncodingType)bdr.ReadByte();
-            VersionNumber = bdr.ReadByte();
-            NumberOfSections = bdr.ReadUInt16();
-            bdr.ReadUInt16();
-            FileSize = bdr.ReadUInt32();
-            bdr.ReadBytes(0x0A);
+            ByteOrder = (Endian)reader.ReadUInt16();
+            reader.ByteConverter = ByteConverter.GetConverter(ByteOrder);
+            reader.ReadUInt16();
+            EncodingType = (EncodingType)reader.ReadByte();
+            VersionNumber = reader.Read1Byte();
+            NumberOfSections = reader.ReadUInt16();
+            reader.ReadUInt16();
+            FileSize = reader.ReadUInt32();
+            reader.ReadBytes(0x0A);
 
             //PrintHeader(this);
         }
-        public void Write(BinaryDataWriter bdw)
+        public void Write(BinaryStream writer)
         {
-            bdw.ByteOrder = ByteOrder.BigEndian;
+            writer.ByteConverter = ByteConverter.GetConverter(Endian.Big);
             switch (FileType)
             {
                 case FileType.MSBT:
-                    bdw.Write("MsgStdBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+                    writer.Write("MsgStdBn", StringCoding.Raw, Encoding.ASCII);
                     break;
                 case FileType.MSBP:
-                    bdw.Write("MsgPrjBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+                    writer.Write("MsgPrjBn", StringCoding.Raw, Encoding.ASCII);
                     break;
                 case FileType.MSBF:
-                    bdw.Write("MsgFlwBn", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+                    writer.Write("MsgFlwBn", StringCoding.Raw, Encoding.ASCII);
                     break;
                 case FileType.WMBP:
-                    bdw.Write("WMsgPrjB", BinaryStringFormat.NoPrefixOrTermination, Encoding.ASCII);
+                    writer.Write("WMsgPrjB", StringCoding.Raw, Encoding.ASCII);
                     break;
             }
-            bdw.Write((ushort)ByteOrder);
-            bdw.ByteOrder = ByteOrder;
-            bdw.Write(new byte[2]);
-            bdw.Write((byte)EncodingType);
-            bdw.Write(VersionNumber);
-            bdw.Write(NumberOfSections);
-            bdw.Write(new byte[2]);
-            bdw.Write(FileSize);
-            bdw.Write(new byte[0x0A]);
+            writer.Write((ushort)ByteOrder);
+            writer.ByteConverter = ByteConverter.GetConverter(ByteOrder);
+            writer.Write(new byte[2]);
+            writer.Write((byte)EncodingType);
+            writer.Write(VersionNumber);
+            writer.Write(NumberOfSections);
+            writer.Write(new byte[2]);
+            writer.Write(FileSize);
+            writer.Write(new byte[0x0A]);
         }
-        public void OverrideStats(BinaryDataWriter bdw, ushort newNumberOfBlocks, uint newFileSize)
+        public void OverrideStats(BinaryStream writer, ushort newNumberOfBlocks, uint newFileSize)
         {
-            bdw.Position = 0x0E;
-            bdw.Write(newNumberOfBlocks);
-            bdw.Position = 0x12;
-            bdw.Write(newFileSize);
+            writer.Position = 0x0E;
+            writer.Write(newNumberOfBlocks);
+            writer.Position = 0x12;
+            writer.Write(newFileSize);
         }
     }
     #endregion

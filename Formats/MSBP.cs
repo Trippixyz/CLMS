@@ -1,5 +1,6 @@
 ﻿using SharpYaml.Serialization;
 using Syroot.BinaryData;
+using Syroot.BinaryData.Core;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -21,7 +22,7 @@ namespace CLMS
         public List<string> SourceFiles = new();
 
         public MSBP() : base(FileType.MSBP) { }
-        public MSBP(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.MSBP) { }
+        public MSBP(Endian aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.MSBP) { }
         public MSBP(Stream stm, bool keepOffset) : base(stm, keepOffset) { }
         public MSBP(byte[] data) : base(data) { }
         public MSBP(List<byte> data) : base(data) { }
@@ -44,7 +45,7 @@ namespace CLMS
             }
 
             root.Add("Version", VersionNumber.ToString());
-            root.Add("IsBigEndian", (ByteOrder == ByteOrder.BigEndian ? true : false).ToString());
+            root.Add("IsBigEndian", (ByteOrder == Endian.Big ? true : false).ToString());
             root.Add("Encoding", encoding);
             root.Add("SlotNum", LabelSlotCount.ToString());
 
@@ -247,7 +248,7 @@ namespace CLMS
                         msbp.VersionNumber = byte.Parse(value);
                         break;
                     case "IsBigEndian":
-                        msbp.ByteOrder = bool.Parse(value) ? ByteOrder.BigEndian : ByteOrder.LittleEndian;
+                        msbp.ByteOrder = bool.Parse(value) ? Endian.Big : Endian.Little;
                         break;
                     case "Encoding":
                         switch (value)
@@ -506,7 +507,7 @@ namespace CLMS
         #region reading code
         protected override void Read(Stream stm)
         {
-            var bdr = CreateReadEnvironment(stm);
+            var reader = CreateReadEnvironment(stm);
 
             #region checkers
 
@@ -545,79 +546,79 @@ namespace CLMS
             for (int i = 0; i < Header.NumberOfSections; i++)
             {
                 // this should not happen on msbp in theory but who knows
-                if (bdr.EndOfStream)
+                if (reader.EndOfStream)
                     continue;
 
-                string cSectionMagic = bdr.ReadASCIIString(4);
-                uint cSectionSize = bdr.ReadUInt32();
-                bdr.SkipBytes(8);
-                long cPositionBuf = bdr.Position;
+                string cSectionMagic = reader.ReadASCIIString(4);
+                uint cSectionSize = reader.ReadUInt32();
+                reader.SkipBytes(8);
+                long cPositionBuf = reader.Position;
                 switch (cSectionMagic)
                 {
                     case "CLR1":
                         isCLR1 = true;
 
-                        clr1 = ReadCLR1(bdr);
+                        clr1 = ReadCLR1(reader);
                         break;
                     case "CLB1":
                         isCLB1 = true;
 
-                        clb1 = ReadCLB1(bdr);
+                        clb1 = ReadCLB1(reader);
                         break;
                     case "ATI2":
                         isATI2 = true;
 
-                        ati2 = ReadATI2(bdr);
+                        ati2 = ReadATI2(reader);
                         break;
                     case "ALB1":
                         isALB1 = true;
 
-                        alb1 = ReadALB1(bdr);
+                        alb1 = ReadALB1(reader);
                         break;
                     case "ALI2":
                         isALI2 = true;
 
-                        ali2 = ReadALI2(bdr);
+                        ali2 = ReadALI2(reader);
                         break;
                     case "TGG2":
                         isTGG2 = true;
 
-                        tgg2 = ReadTGG2(bdr);
+                        tgg2 = ReadTGG2(reader);
                         break;
                     case "TAG2":
                         isTAG2 = true;
 
-                        tag2 = ReadTAG2(bdr);
+                        tag2 = ReadTAG2(reader);
                         break;
                     case "TGP2":
                         isTGP2 = true;
 
-                        tgp2 = ReadTGP2(bdr);
+                        tgp2 = ReadTGP2(reader);
                         break;
                     case "TGL2":
                         isTGL2 = true;
 
-                        tgl2 = ReadTGL2(bdr);
+                        tgl2 = ReadTGL2(reader);
                         break;
                     case "SYL3":
                         isSYL3 = true;
 
-                        syl3 = ReadSYL3(bdr);
+                        syl3 = ReadSYL3(reader);
                         break;
                     case "SLB1":
                         isSLB1 = true;
 
-                        slb1 = ReadSLB1(bdr);
+                        slb1 = ReadSLB1(reader);
                         break;
                     case "CTI1":
                         isCTI1 = true;
 
-                        cti1 = ReadCTI1(bdr);
+                        cti1 = ReadCTI1(reader);
                         break;
                 }
-                bdr.Position = cPositionBuf;
-                bdr.SkipBytes(cSectionSize);
-                bdr.Align(0x10);
+                reader.Position = cPositionBuf;
+                reader.SkipBytes(cSectionSize);
+                reader.Align(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -751,7 +752,7 @@ namespace CLMS
             }
             else { SourceFiles = null; }
         }
-        private CLR1 ReadCLR1(BinaryDataReader bdr)
+        private CLR1 ReadCLR1(BinaryStream bdr)
         {
             CLR1 result = new();
 
@@ -766,7 +767,7 @@ namespace CLMS
 
             return result;
         }
-        private CLB1 ReadCLB1(BinaryDataReader bdr)
+        private CLB1 ReadCLB1(BinaryStream bdr)
         {
             CLB1 result = new();
 
@@ -774,7 +775,7 @@ namespace CLMS
 
             return result;
         }
-        private ATI2 ReadATI2(BinaryDataReader bdr)
+        private ATI2 ReadATI2(BinaryStream bdr)
         {
             ATI2 result = new();
 
@@ -784,7 +785,7 @@ namespace CLMS
 
             for (int i = 0; i < attributeNum; i++)
             {
-                byte cType = bdr.ReadByte();
+                byte cType = bdr.Read1Byte();
                 bdr.SkipByte();
                 ushort cListIndex = bdr.ReadUInt16();
                 uint cOffset = bdr.ReadUInt32();
@@ -796,7 +797,7 @@ namespace CLMS
 
             return result;
         }
-        private ALB1 ReadALB1(BinaryDataReader bdr)
+        private ALB1 ReadALB1(BinaryStream bdr)
         {
             ALB1 result = new();
 
@@ -804,7 +805,7 @@ namespace CLMS
 
             return result;
         }
-        private ALI2 ReadALI2(BinaryDataReader bdr)
+        private ALI2 ReadALI2(BinaryStream bdr)
         {
             ALI2 result = new();
 
@@ -843,7 +844,7 @@ namespace CLMS
 
                     while (!isNullChar)
                     {
-                        char cChar = bdr.ReadChar();
+                        char cChar = bdr.ReadString(1)[0];
                         if (cChar == 0x00)
                         {
                             isNullChar = true;
@@ -863,7 +864,7 @@ namespace CLMS
 
             return result;
         }
-        private TGG2 ReadTGG2(BinaryDataReader bdr)
+        private TGG2 ReadTGG2(BinaryStream bdr)
         {
             TGG2 result = new();
 
@@ -887,7 +888,7 @@ namespace CLMS
                     cTagGroupTypeIndices[j] = bdr.ReadUInt16();
                 }
 
-                string cTagGroupName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
+                string cTagGroupName = bdr.ReadString(StringCoding.ZeroTerminated);
 
                 tagGroupData[i] = (cTagGroupName, cTagGroupIndex, cTagGroupTypeIndices);
 
@@ -898,7 +899,7 @@ namespace CLMS
 
             return result;
         }
-        private TAG2 ReadTAG2(BinaryDataReader bdr)
+        private TAG2 ReadTAG2(BinaryStream bdr)
         {
             TAG2 result = new();
 
@@ -921,7 +922,7 @@ namespace CLMS
                     cTagTypeParameterIndices[j] = bdr.ReadUInt16();
                 }
 
-                string cTagTypeName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
+                string cTagTypeName = bdr.ReadString(StringCoding.ZeroTerminated);
 
                 result.ControlTagTypes.Add((cTagTypeName, cTagTypeParameterIndices));
 
@@ -930,7 +931,7 @@ namespace CLMS
 
             return result;
         }
-        private TGP2 ReadTGP2(BinaryDataReader bdr)
+        private TGP2 ReadTGP2(BinaryStream bdr)
         {
             TGP2 result = new();
 
@@ -945,7 +946,7 @@ namespace CLMS
                 long positionBuf = bdr.Position;
                 bdr.Position = startPosition + cTagPosition;
 
-                byte cType = bdr.ReadByte();
+                byte cType = bdr.Read1Byte();
 
                 ControlTagParameter cControlTagParemeter = new(cType);
 
@@ -960,13 +961,13 @@ namespace CLMS
                         listItemIndices[j] = bdr.ReadUInt16();
                     }
 
-                    string cTagParameterName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
+                    string cTagParameterName = bdr.ReadString(StringCoding.ZeroTerminated);
 
                     result.ControlTagParameters.Add((cTagParameterName, cControlTagParemeter, listItemIndices));
                 }
                 else
                 {
-                    string cTagParameterName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
+                    string cTagParameterName = bdr.ReadString(StringCoding.ZeroTerminated);
 
                     result.ControlTagParameters.Add((cTagParameterName, cControlTagParemeter, new ushort[0]));
                 }
@@ -976,7 +977,7 @@ namespace CLMS
 
             return result;
         }
-        private TGL2 ReadTGL2(BinaryDataReader bdr)
+        private TGL2 ReadTGL2(BinaryStream bdr)
         {
             TGL2 result = new();
 
@@ -991,7 +992,7 @@ namespace CLMS
                 long positionBuf = bdr.Position;
                 bdr.Position = startPosition + cListItemNameOffset;
 
-                string cListItemName = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
+                string cListItemName = bdr.ReadString(StringCoding.ZeroTerminated);
                 result.ListItemNames[i] = cListItemName;
 
                 bdr.Position = positionBuf;
@@ -999,7 +1000,7 @@ namespace CLMS
 
             return result;
         }
-        private SYL3 ReadSYL3(BinaryDataReader bdr)
+        private SYL3 ReadSYL3(BinaryStream bdr)
         {
             SYL3 result = new();
 
@@ -1013,7 +1014,7 @@ namespace CLMS
 
             return result;
         }
-        private SLB1 ReadSLB1(BinaryDataReader bdr)
+        private SLB1 ReadSLB1(BinaryStream bdr)
         {
             SLB1 result = new();
 
@@ -1021,7 +1022,7 @@ namespace CLMS
 
             return result;
         }
-        private CTI1 ReadCTI1(BinaryDataReader bdr)
+        private CTI1 ReadCTI1(BinaryStream bdr)
         {
             CTI1 result = new();
 
@@ -1035,7 +1036,7 @@ namespace CLMS
                 long positionBuf = bdr.Position;
                 bdr.Position = startPosition + cSourceFileOffset;
 
-                string cSourceFile = bdr.ReadString(BinaryStringFormat.ZeroTerminated);
+                string cSourceFile = bdr.ReadString(StringCoding.ZeroTerminated);
                 result.SourceFiles[i] = cSourceFile;
 
                 bdr.Position = positionBuf;
@@ -1048,78 +1049,78 @@ namespace CLMS
         #region writing code
         protected override byte[] Write(bool optimize)
         {
-            (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
+            (Stream stm, BinaryStream writer, ushort sectionNumber) = CreateWriteEnvironment();
 
             if (Colors != null)
             {
-                WriteCLR1(bdw, Colors.Values.ToArray());
-                bdw.Align(0x10, 0xAB);
+                WriteCLR1(writer, Colors.Values.ToArray());
+                writer.Align(0x10, 0xAB);
 
-                WriteCLB1(bdw, LabelSlotCount, Colors.KeysAsLabels().ToArray(), optimize);
-                bdw.Align(0x10, 0xAB);
+                WriteCLB1(writer, LabelSlotCount, Colors.KeysAsLabels().ToArray(), optimize);
+                writer.Align(0x10, 0xAB);
 
                 sectionNumber += 2;
             }
 
             if (AttributeInfos != null)
             {
-                WriteATI2(bdw, AttributeInfos.Values.ToArray());
-                bdw.Align(0x10, 0xAB);
-                WriteALB1(bdw, LabelSlotCount, AttributeInfos.KeysAsLabels().ToArray(), optimize);
-                bdw.Align(0x10, 0xAB);
+                WriteATI2(writer, AttributeInfos.Values.ToArray());
+                writer.Align(0x10, 0xAB);
+                WriteALB1(writer, LabelSlotCount, AttributeInfos.KeysAsLabels().ToArray(), optimize);
+                writer.Align(0x10, 0xAB);
 
                 List<List<string>> attributeListslist = new();
                 foreach (AttributeInfo cAttribute in AttributeInfos.Values)
                 {
                     attributeListslist.Add(cAttribute.List);
                 }
-                WriteALI2(bdw, attributeListslist.ToArray());
-                bdw.Align(0x10, 0xAB);
+                WriteALI2(writer, attributeListslist.ToArray());
+                writer.Align(0x10, 0xAB);
 
                 sectionNumber += 3;
             }
 
             if (ControlTags != null)
             {
-                WriteTGG2(bdw, ControlTags);
-                bdw.Align(0x10, 0xAB);
+                WriteTGG2(writer, ControlTags);
+                writer.Align(0x10, 0xAB);
 
-                WriteTAG2(bdw, ControlTags);
-                bdw.Align(0x10, 0xAB);
+                WriteTAG2(writer, ControlTags);
+                writer.Align(0x10, 0xAB);
 
-                WriteTGP2(bdw, ControlTags);
-                bdw.Align(0x10, 0xAB);
+                WriteTGP2(writer, ControlTags);
+                writer.Align(0x10, 0xAB);
 
-                WriteTGL2(bdw, ControlTags);
-                bdw.Align(0x10, 0xAB);
+                WriteTGL2(writer, ControlTags);
+                writer.Align(0x10, 0xAB);
 
                 sectionNumber += 4;
             }
 
             if (Styles != null)
             {
-                WriteSYL3(bdw, Styles.Values.ToArray());
-                bdw.Align(0x10, 0xAB);
+                WriteSYL3(writer, Styles.Values.ToArray());
+                writer.Align(0x10, 0xAB);
 
-                WriteSLB1(bdw, LabelSlotCount, Styles.KeysAsLabels().ToArray(), optimize);
-                bdw.Align(0x10, 0xAB);
+                WriteSLB1(writer, LabelSlotCount, Styles.KeysAsLabels().ToArray(), optimize);
+                writer.Align(0x10, 0xAB);
 
                 sectionNumber += 2;
             }
 
             if (SourceFiles != null)
             {
-                WriteCTI1(bdw, SourceFiles.ToArray());
-                bdw.Align(0x10, 0xAB);
+                WriteCTI1(writer, SourceFiles.ToArray());
+                writer.Align(0x10, 0xAB);
 
                 sectionNumber++;
             }
 
-            Header.OverrideStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
+            Header.OverrideStats(writer, sectionNumber, (uint)writer.BaseStream.Length);
 
             return StreamToByteArray(stm);
         }
-        private void WriteCLR1(BinaryDataWriter bdw, Color[] colors)
+        private void WriteCLR1(BinaryStream bdw, Color[] colors)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "CLR1");
 
@@ -1135,7 +1136,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteCLB1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
+        private void WriteCLB1(BinaryStream bdw, uint slotNum, string[] labels, bool optimize)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "CLB1");
 
@@ -1143,7 +1144,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteATI2(BinaryDataWriter bdw, AttributeInfo[] attributeInfos)
+        private void WriteATI2(BinaryStream bdw, AttributeInfo[] attributeInfos)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "ATI2");
 
@@ -1160,7 +1161,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteALB1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
+        private void WriteALB1(BinaryStream bdw, uint slotNum, string[] labels, bool optimize)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "ALB1");
 
@@ -1168,7 +1169,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteALI2(BinaryDataWriter bdw, List<string>[] lists)
+        private void WriteALI2(BinaryStream bdw, List<string>[] lists)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "ALI2");
 
@@ -1192,7 +1193,7 @@ namespace CLMS
                     long cListItemOffset = bdw.Position;
                     bdw.GoBackWriteRestore(cListHashTablePosBuf + (j * 4), (uint)(cListItemOffset - cListStartPosition));
 
-                    bdw.Write(lists[i][(int)j], BinaryStringFormat.NoPrefixOrTermination);
+                    bdw.Write(lists[i][(int)j], StringCoding.Raw);
 
                     // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                     bdw.WriteChar(0x00);
@@ -1203,7 +1204,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTGG2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
+        private void WriteTGG2(BinaryStream bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TGG2");
 
@@ -1243,7 +1244,7 @@ namespace CLMS
                     bdw.Write(tagGroupData[i].TagIndices[j]);
                 }
 
-                bdw.Write(tagGroupData[i].Name, BinaryStringFormat.NoPrefixOrTermination);
+                bdw.Write(tagGroupData[i].Name, StringCoding.Raw);
 
                 // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                 bdw.WriteChar(0x00);
@@ -1253,7 +1254,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTAG2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
+        private void WriteTAG2(BinaryStream bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TAG2");
 
@@ -1293,7 +1294,7 @@ namespace CLMS
                     //Console.ReadKey();
                     //Console.WriteLine();
 
-                    bdw.Write(cControlTag.Value.ControlTagTypes[j].Name, BinaryStringFormat.NoPrefixOrTermination);
+                    bdw.Write(cControlTag.Value.ControlTagTypes[j].Name, StringCoding.Raw);
 
                     // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                     bdw.WriteChar(0x00);
@@ -1306,7 +1307,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTGP2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
+        private void WriteTGP2(BinaryStream bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TGP2");
 
@@ -1351,7 +1352,7 @@ namespace CLMS
                             }
                         }
 
-                        bdw.Write(cControlTagParameter.Name, BinaryStringFormat.NoPrefixOrTermination);
+                        bdw.Write(cControlTagParameter.Name, StringCoding.Raw);
 
                         // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                         bdw.WriteChar(0x00);
@@ -1365,7 +1366,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteTGL2(BinaryDataWriter bdw, Dictionary<ushort, ControlTagGroup> controlTags)
+        private void WriteTGL2(BinaryStream bdw, Dictionary<ushort, ControlTagGroup> controlTags)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "TGL2");
 
@@ -1400,7 +1401,7 @@ namespace CLMS
                             long cListItemOffset = bdw.Position;
                             bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cListItemOffset - startPosition));
 
-                            bdw.Write(clistItem, BinaryStringFormat.NoPrefixOrTermination);
+                            bdw.Write(clistItem, StringCoding.Raw);
 
                             // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                             bdw.WriteChar(0x00);
@@ -1413,7 +1414,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteSYL3(BinaryDataWriter bdw, Style[] styles)
+        private void WriteSYL3(BinaryStream bdw, Style[] styles)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "SYL3");
 
@@ -1434,7 +1435,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteSLB1(BinaryDataWriter bdw, uint slotNum, string[] labels, bool optimize)
+        private void WriteSLB1(BinaryStream bdw, uint slotNum, string[] labels, bool optimize)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "SLB1");
 
@@ -1442,7 +1443,7 @@ namespace CLMS
 
             CalcAndSetSectionSize(bdw, sectionSizePosBuf);
         }
-        private void WriteCTI1(BinaryDataWriter bdw, string[] sourceFiles)
+        private void WriteCTI1(BinaryStream bdw, string[] sourceFiles)
         {
             long sectionSizePosBuf = WriteSectionHeader(bdw, "CTI1");
 
@@ -1456,7 +1457,7 @@ namespace CLMS
                 long cMessageOffset = bdw.Position;
                 bdw.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cMessageOffset - startPosition));
 
-                bdw.Write(sourceFiles[i], BinaryStringFormat.NoPrefixOrTermination);
+                bdw.Write(sourceFiles[i], StringCoding.Raw);
 
                 // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                 bdw.WriteChar(0x00);

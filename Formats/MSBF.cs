@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using static CLMS.LMS;
 using static CLMS.Shared;
+using Syroot.BinaryData.Core;
 
 namespace CLMS
 {
@@ -15,7 +16,7 @@ namespace CLMS
         public Dictionary<string, InitializerFlowNode> Flows = new();
 
         public MSBF() : base(FileType.MSBF) { }
-        public MSBF(ByteOrder aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.MSBF) { }
+        public MSBF(Endian aByteOrder, Encoding aEncoding, bool createDefaultHeader = true) : base(aByteOrder, aEncoding, createDefaultHeader, FileType.MSBF) { }
         public MSBF(Stream stm, bool keepOffset) : base(stm, keepOffset) { }
         public MSBF(byte[] data) : base(data) { }
         public MSBF(List<byte> data) : base(data) { }
@@ -28,7 +29,7 @@ namespace CLMS
         #region reading code
         protected override void Read(Stream stm)
         {
-            var bdr = CreateReadEnvironment(stm);
+            var reader = CreateReadEnvironment(stm);
 
             #region checkers
 
@@ -46,29 +47,29 @@ namespace CLMS
 
             for (int i = 0; i < Header.NumberOfSections; i++)
             {
-                if (bdr.EndOfStream)
+                if (reader.EndOfStream)
                     continue;
 
-                string cSectionMagic = bdr.ReadASCIIString(4);
-                uint cSectionSize = bdr.ReadUInt32();
-                bdr.SkipBytes(8);
-                long cPositionBuf = bdr.Position;
+                string cSectionMagic = reader.ReadASCIIString(4);
+                uint cSectionSize = reader.ReadUInt32();
+                reader.SkipBytes(8);
+                long cPositionBuf = reader.Position;
                 switch (cSectionMagic)
                 {
                     case "FLW2":
                         isFLW2 = true;
 
-                        flw2 = ReadFLW2(bdr);
+                        flw2 = ReadFLW2(reader);
                         break;
                     case "FEN1":
                         isFEN1 = true;
 
-                        fen1 = ReadFEN1(bdr);
+                        fen1 = ReadFEN1(reader);
                         break;
                 }
-                bdr.Position = cPositionBuf;
-                bdr.SkipBytes(cSectionSize);
-                bdr.Align(0x10);
+                reader.Position = cPositionBuf;
+                reader.SkipBytes(cSectionSize);
+                reader.Align(0x10);
             }
 
             // beginning of parsing buffers into class items
@@ -160,26 +161,26 @@ namespace CLMS
                 }
             }
         }
-        private FLW2 ReadFLW2(BinaryDataReader bdr)
+        private FLW2 ReadFLW2(BinaryStream reader)
         {
             FLW2 result = new();
 
-            ushort flowNum = bdr.ReadUInt16();
-            ushort branchNum = bdr.ReadUInt16();
-            bdr.ReadUInt32();
+            ushort flowNum = reader.ReadUInt16();
+            ushort branchNum = reader.ReadUInt16();
+            reader.ReadUInt32();
             result.FlowDatas = new FlowData[flowNum];
             result.ConditionIDs = new ushort[branchNum];
 
             for (ushort i = 0; i < flowNum; i++)
             {
                 // reads one flow (12 bytes)
-                FlowType cType = (FlowType)bdr.ReadInt16();
+                FlowType cType = (FlowType)reader.ReadInt16();
 
-                short field0 = bdr.ReadInt16();
-                short field2 = bdr.ReadInt16();
-                short field4 = bdr.ReadInt16();
-                short field6 = bdr.ReadInt16();
-                short field8 = bdr.ReadInt16();
+                short field0 = reader.ReadInt16();
+                short field2 = reader.ReadInt16();
+                short field4 = reader.ReadInt16();
+                short field6 = reader.ReadInt16();
+                short field8 = reader.ReadInt16();
 
                 FlowData cFlow = new(cType, field0, field2, field4, field6, field8);
 
@@ -188,33 +189,33 @@ namespace CLMS
 
             for (ushort i = 0; i < branchNum; i ++)
             {
-                result.ConditionIDs[i] = bdr.ReadUInt16();
+                result.ConditionIDs[i] = reader.ReadUInt16();
             }
 
             return result;
         }
-        private FEN1 ReadFEN1(BinaryDataReader bdr)
+        private FEN1 ReadFEN1(BinaryStream reader)
         {
             FEN1 result = new();
 
-            long startPosition = bdr.Position;
+            long startPosition = reader.Position;
             List<(uint InitializerFlowID, string Label)> refLabelList = new();
-            uint hashSlotNum = bdr.ReadUInt32();
+            uint hashSlotNum = reader.ReadUInt32();
 
             for (uint i = 0; i < hashSlotNum; i++)
             {
-                uint cHashEntryNum = bdr.ReadUInt32();
-                uint cHashOffset = bdr.ReadUInt32();
-                long positionBuf = bdr.BaseStream.Position;
+                uint cHashEntryNum = reader.ReadUInt32();
+                uint cHashOffset = reader.ReadUInt32();
+                long positionBuf = reader.BaseStream.Position;
 
-                bdr.Position = startPosition + cHashOffset;
+                reader.Position = startPosition + cHashOffset;
                 for (uint j = 0; j < cHashEntryNum; j++)
                 {
-                    byte cLabelLength = bdr.ReadByte();
-                    string cLabelString = bdr.ReadASCIIString(cLabelLength);
-                    refLabelList.Add((bdr.ReadUInt32(), cLabelString));
+                    byte cLabelLength = reader.Read1Byte();
+                    string cLabelString = reader.ReadASCIIString(cLabelLength);
+                    refLabelList.Add((reader.ReadUInt32(), cLabelString));
                 }
-                bdr.Position = positionBuf;
+                reader.Position = positionBuf;
             }
 
             result.RefLabels = refLabelList.ToArray();
@@ -226,11 +227,11 @@ namespace CLMS
         #region writing code
         protected override byte[] Write(bool optimize)
         {
-            (Stream stm, BinaryDataWriter bdw, ushort sectionNumber) = CreateWriteEnvironment();
+            (Stream stm, BinaryStream writer, ushort sectionNumber) = CreateWriteEnvironment();
 
 
 
-            Header.OverrideStats(bdw, sectionNumber, (uint)bdw.BaseStream.Length);
+            Header.OverrideStats(writer, sectionNumber, (uint)writer.BaseStream.Length);
 
             return StreamToByteArray(stm);
         }
