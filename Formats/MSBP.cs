@@ -430,18 +430,15 @@ namespace CLMS
         #region TagControl getting
         public TagConfig TryGetTagConfigByControlTag(string aTagGroup, string aTagType)
         {
-            for (ushort group = 0; group < ControlTags.Count; group++)
+            foreach (var tagGroup in ControlTags)
             {
-                if (ControlTags[group].Name == aTagGroup)
+                if (tagGroup.Value.Name == aTagGroup)
                 {
-                    for (ushort type = 0; type < ControlTags[group].ControlTagTypes.Count; type++)
-                    {
-                        if (ControlTags[group].ControlTagTypes[type].Name == aTagType)
-                        {
-                            return new(group, type);
-                        }
+                    for (ushort type = 0; type < tagGroup.Value.ControlTagTypes.Count; type++) {
+                        if (tagGroup.Value.ControlTagTypes[type].Name == aTagType)
+                            return new(tagGroup.Key, type);
                     }
-                }
+                } 
             }
             throw new Exception("TagGroup does not exist: " + aTagGroup);
         }
@@ -470,6 +467,8 @@ namespace CLMS
 
         public bool ContainsControlTag(TagConfig aTagConfig)
         {
+            if (ControlTags == null) return false;
+
             foreach (var cControlTagGroup in ControlTags)
             {
                 for (ushort j = 0; j < cControlTagGroup.Value.ControlTagTypes.Count; j++)
@@ -638,7 +637,7 @@ namespace CLMS
                 {
                     Colors.Type = LMSDictionaryKeyType.None;
 
-                    for (uint i = 0; i < clb1.LabelHolder.Labels.Length; i++)
+                    for (uint i = 0; i < clb1.LabelHolder?.Labels?.Length; i++)
                     {
                         Colors.Add(clr1.Colors[i]);
                     }
@@ -872,14 +871,27 @@ namespace CLMS
             (string, ushort, ushort[])[] tagGroupData = new (string, ushort, ushort[])[tagGroupNum];
             reader.SkipBytes(2);
 
+            ushort idx = 0;
             for (uint i = 0; i < tagGroupNum; i++)
             {
                 uint cTagGroupPosition = reader.ReadUInt32();
                 long positionBuf = reader.Position;
                 reader.Position = startPosition + cTagGroupPosition;
 
-                ushort cTagGroupIndex = reader.ReadUInt16();
-                ushort numOfTagIndices = reader.ReadUInt16();
+                ushort cTagGroupIndex;
+                ushort numOfTagIndices;
+                if (this.VersionNumber <= 3) //no index, just counter
+                {
+                    numOfTagIndices = reader.ReadUInt16();
+                    cTagGroupIndex = idx;
+                    idx += numOfTagIndices; //calculate index
+                }
+                else
+                {
+                    cTagGroupIndex = reader.ReadUInt16();
+                    numOfTagIndices = reader.ReadUInt16();
+                }
+
                 ushort[] cTagGroupTypeIndices = new ushort[numOfTagIndices];
 
                 for (uint j = 0; j < numOfTagIndices; j++)
@@ -1235,7 +1247,8 @@ namespace CLMS
                 long cMessageOffset = writer.Position;
                 writer.GoBackWriteRestore(hashTablePosBuf + (i * 4), (uint)(cMessageOffset - startPosition));
 
-                writer.Write(tagGroupData[i].Index);
+                if (this.VersionNumber > 3)
+                   writer.Write(tagGroupData[i].Index);
                 writer.Write((ushort)tagGroupData[i].TagIndices.Length);
 
                 for (uint j = 0; j < tagGroupData[i].TagIndices.Length; j++)

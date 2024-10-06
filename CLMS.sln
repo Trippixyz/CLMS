@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.32014.148
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CLMS", "CLMS.csproj", "{8D31697E-8D77-4A28-AB06-B309D3694FAA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MSBPTool", "..\MSBPTool\MSBPTool.csproj", "{AA710BA6-C898-4316-8C61-EA4B556FAB09}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{8D31697E-8D77-4A28-AB06-B309D3694FAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8D31697E-8D77-4A28-AB06-B309D3694FAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D31697E-8D77-4A28-AB06-B309D3694FAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA710BA6-C898-4316-8C61-EA4B556FAB09}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA710BA6-C898-4316-8C61-EA4B556FAB09}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA710BA6-C898-4316-8C61-EA4B556FAB09}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA710BA6-C898-4316-8C61-EA4B556FAB09}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

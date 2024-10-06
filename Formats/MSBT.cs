@@ -1,11 +1,17 @@
 ﻿using SharpYaml.Serialization;
+using SharpYaml.Tokens;
 using Syroot.BinaryData;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Serialization;
 using static CLMS.LMS;
+using static CLMS.MSBP;
 using static CLMS.Shared;
 
 namespace CLMS
@@ -108,8 +114,305 @@ namespace CLMS
             return Write(optimize);
         }
 
-        #region yaml
         public string ToYaml()
+        {
+            return ToYaml(null);
+        }
+
+        #region xml
+
+        public string ToXml(MSBP message_project = null)
+        {
+            XmlMsbt ob = new XmlMsbt()
+            {
+                Version = this.VersionNumber,
+                Encoding = this.EncodingType,
+                IsBigEndian = this.ByteOrder == ByteOrder.BigEndian,
+                SizePerAttribute = this.SizePerAttribute,
+                SlotNum = this.LabelSlotCount,
+                UseIndices = this.HasNLI1,
+                UseAttributes = this.HasAttributes,
+                UseStyles = this.HasStyleIndices,
+                UsesAttributeStrings = this.UsesAttributeStrings,
+                ATO1Content = this.ATO1Content,
+            };
+            foreach (var item in this.Messages)
+            {
+                object[] messageParams = item.Value.Contents.ToArray();
+                string text = "";
+
+                XmlMsbtMessage message = new XmlMsbtMessage();
+
+                List<XmlMsbtTag> tags = new List<XmlMsbtTag>();
+
+                int tagCount = 0;
+                foreach (var cParam in messageParams)
+                {
+                    if (cParam is string)
+                    {
+                        string mess = ((string)cParam).Replace($"{Tag.SeparatorChars[0]}", $"\\{Tag.SeparatorChars[0]}");
+                        text += mess.Replace("\n", "&#xA;");
+                    }
+                    if (cParam is Tag)
+                    {
+                        Tag tag = (Tag)cParam;
+
+                        // TODO: fix this to be /> if there wont be a TagEnd (quite a hard challenge)
+                        text += $"[Tag_{tagCount}]";
+
+                        XmlMsbtTag tagNode = new();
+                        tagNode.Name = $"[Tag_{tagCount}]";
+
+                        if (message_project != null && message_project.ContainsControlTag(new TagConfig(tag)))
+                        {
+                            string[] ctrl = message_project.TryGetControlTagByTag(tag);
+
+                            tagNode.Group = tag.Group.ToString();
+                            tagNode.Type = tag.Type.ToString();
+                        }
+                        else
+                        {
+                            tagNode.Group = tag.Group.ToString();
+                            tagNode.Type = tag.Type.ToString();
+                        }
+                        tagNode.Parameters = ByteArrayToString(tag.Parameters, true);
+
+                        tags.Add(tagNode);
+                        tagCount++;
+                    }
+                    if (cParam is TagEnd)
+                    {
+                        TagEnd tagEnd = (TagEnd)cParam;
+                        text += $"[TagEnd_{tagCount - 1}]";
+
+                        XmlMsbtTag tagNode = new();
+                        tagNode.Name = $"[TagEnd_{tagCount - 1}]";
+                        tagNode.Parameters = ByteArrayToString(tagEnd.RegionEndMarkerBytes, true);
+                        tags.Add(tagNode);
+
+                    }
+                }
+
+                // fixing SharpYaml glitch manually here lol
+                bool hasSpecialChars = false;
+                foreach (char cChar in text)
+                    if (char.IsControl(cChar)) { hasSpecialChars = true; }
+
+                if (!hasSpecialChars && text.Length > 0)
+                {
+                    if (text[0] == '\'' && text[text.Length - 1] != '\'')
+                    {
+                        text = text.Replace("'", "''");
+                        text = $"'{text}'";
+                    }
+                }
+
+                message.Label = (string)item.Key;
+                message.Content = text;
+                message.Tags.AddRange(tags);
+                message.StyleIndex = item.Value.StyleIndex;
+
+                if (item.Value.Attribute?.Data?.Length > 0)
+                    message.Attributes = ByteArrayToString(item.Value.Attribute.Data);
+
+
+                ob.Messages.Add(message);
+            }
+
+            using (var writer = new System.IO.StringWriter())
+            {
+                var serializer = new XmlSerializer(typeof(XmlMsbt));
+                serializer.Serialize(writer, ob);
+                writer.Flush();
+
+                return writer.ToString();
+            }
+        }
+
+        public class XmlMsbt
+        {
+            [XmlAttribute]
+            public byte Version { get; set; }
+
+            [XmlAttribute]
+            public bool IsBigEndian { get; set; }
+
+            [XmlAttribute]
+            public bool UseIndices { get; set; }
+            [XmlAttribute]
+            public bool UseStyles { get; set; }
+            [XmlAttribute]
+            public bool UseAttributes { get; set; }
+            [XmlAttribute]
+            public bool UsesAttributeStrings { get; set; } = true;
+
+            [XmlAttribute]
+            public uint SizePerAttribute { get; set; }
+            [XmlAttribute]
+            public EncodingType Encoding { get; set; }
+            [XmlAttribute]
+            public uint SlotNum { get; set; }
+
+            [XmlArray]
+            public List<XmlMsbtMessage> Messages { get; set; } = new List<XmlMsbtMessage>();
+
+            public byte[] ATO1Content { get; set; }
+        }
+
+        public class XmlMsbtTag
+        {
+            [XmlAttribute]
+            public string Name { get; set; }
+            [XmlAttribute]
+            public string Group { get; set; }
+            [XmlAttribute]
+            public string Type { get; set; }
+            [XmlAttribute]
+            public string Parameters { get; set; }
+        }
+
+        public class XmlMsbtMessage
+        {
+            [XmlAttribute]
+            public string Label;
+
+            [XmlAttribute]
+            public int StyleIndex;
+
+            [XmlElement]
+            public string Content;
+
+            [XmlArray]
+            public List<XmlMsbtTag> Tags { get; set; } = new List<XmlMsbtTag>();
+
+            [XmlElement]
+            public string Attributes;
+        }
+
+        public static MSBT FromXml(string xml, MSBP msbp = null)
+        {
+            var xmlSerializer = new XmlSerializer(typeof(XmlMsbt));
+            using (var stringReader = new StringReader(xml))
+            {
+                XmlMsbt ob = (XmlMsbt)xmlSerializer.Deserialize(stringReader);
+
+                MSBT result = new MSBT
+                {
+                    VersionNumber = ob.Version,
+                    EncodingType = ob.Encoding,
+                    ByteOrder = ob.IsBigEndian ? ByteOrder.BigEndian : ByteOrder.LittleEndian,
+                    SizePerAttribute = ob.SizePerAttribute,
+                    LabelSlotCount = ob.SlotNum,
+                    HasNLI1 = ob.UseIndices,
+                    HasAttributes = ob.UseAttributes,
+                    HasStyleIndices = ob.UseStyles,
+                    Messages = new LMSDictionary<Message>()
+                    {
+                        Type = (ob.UseIndices ? LMSDictionaryKeyType.Indices : LMSDictionaryKeyType.Labels)
+                    },
+                    UsesAttributeStrings = ob.UsesAttributeStrings,
+                    ATO1Content = ob.ATO1Content,
+                    HasATO1 = ob.ATO1Content?.Length > 0,
+                };
+
+                foreach (var message in ob.Messages)
+                {
+                    message.Content = message.Content.Replace("&#xA;", "\n");
+
+                    var messageContent = new Message
+                    {
+                        Contents = new List<object>(),
+                    };
+
+                    if (!string.IsNullOrEmpty(message.Attributes))
+                        messageContent.Attribute = new Attribute { Data = StringToByteArray(message.Attributes) };
+
+                    var text = message.Content;
+
+                    Dictionary<string, (Tag tag, TagEnd tagEnd)> tags = new();
+
+                    foreach (var tag in message.Tags)
+                    {
+                        TagEnd tagEnd = null;
+                        Tag tagValue = null;
+
+                        if (tag.Name.Contains("TagEnd"))
+                        {
+                            var tagParameters = StringToByteArray(tag.Parameters);
+                            tagEnd = new TagEnd
+                            {
+                                RegionEndMarkerBytes = tagParameters
+                            };
+                        }
+                        else
+                        {
+                            var tagParameters = StringToByteArray(tag.Parameters);
+
+                            tagValue = new Tag
+                            {
+                                Group = ushort.Parse(tag.Group),
+                                Type = ushort.Parse(tag.Type),
+                                Parameters = tagParameters
+                            };
+                        }
+
+                        tags.Add(tag.Name, (tagValue, tagEnd));
+                    }
+
+                    messageContent.Contents = SplitMessageContent(message.Content, tags);
+
+                    messageContent.StyleIndex = message.StyleIndex;
+
+                    if (result.HasNLI1)
+                    {
+                        int.TryParse(message.Label, out int label_id);
+                        result.Messages.Add(label_id, messageContent);
+                    }
+                    else
+                        result.Messages.Add(message.Label, messageContent);
+                }
+
+                return result;
+            }
+        }
+
+        public static List<object> SplitMessageContent(string content, Dictionary<string, (Tag tag, TagEnd tagEnd)> tags)
+        {
+            List<object> result = new List<object>();
+            Regex regex = new Regex(@"\[Tag_\d+\]|\[TagEnd_\d+\]");
+            int lastIndex = 0;
+
+            foreach (Match match in regex.Matches(content))
+            {
+                if (match.Index > lastIndex)
+                    result.Add(content.Substring(lastIndex, match.Index - lastIndex));
+
+                if (tags.ContainsKey($"{match.Value}"))
+                {
+                    if (match.Value.Contains("TagEnd_"))
+                        result.Add(tags[match.Value].tagEnd);
+                    else
+                        result.Add(tags[match.Value].tag);
+                }
+                else
+                    continue;
+                    //throw new Exception($"Failed to find tag {match.Value} message {content}");
+
+                lastIndex = match.Index + match.Length;
+            }
+
+            if (lastIndex < content.Length)
+            {
+                result.Add(content.Substring(lastIndex));
+            }
+
+            return result;
+        }
+
+        #endregion
+
+        #region yaml
+        public string ToYaml(MSBP message_project = null)
         {
             YamlMappingNode root = new();
             YamlMappingNode messagesNode = new();
@@ -138,8 +441,17 @@ namespace CLMS
 
                         YamlMappingNode tagNode = new();
 
-                        tagNode.Add("Group", tag.Group.ToString());
-                        tagNode.Add("Type", tag.Type.ToString());
+                        if (message_project != null && message_project.ContainsControlTag(new TagConfig(tag)))
+                        {
+                            string[] ctrl = message_project.TryGetControlTagByTag(tag);
+                            tagNode.Add("Msbp_Tag", string.Join(",", ctrl));
+                         }
+                        else
+                        {
+                            tagNode.Add("Group", tag.Group.ToString());
+                            tagNode.Add("Type", tag.Type.ToString());
+                        }
+
                         tagNode.Add("Parameters", ByteArrayToString(tag.Parameters, true));
 
                         tagsNode.Add($"Tag_{tagCount}", tagNode);
@@ -183,18 +495,57 @@ namespace CLMS
                     {
                         messageNode.Add("AttributeString", item.Value.Attribute.String);
                     }
-                    if (item.Value.Attribute.Data.Length > 0)
+                    if (item.Value.Attribute != null && item.Value.Attribute.Data.Length > 0)
                     {
-                        messageNode.Add("Attribute", ByteArrayToString(item.Value.Attribute.Data));
+                       if (message_project != null && message_project.AttributeInfos != null)
+                        {
+                            YamlMappingNode attributeNode = new();
+
+                            using (var reader = new BinaryReader(new MemoryStream(item.Value.Attribute.Data)))
+                            {
+                                foreach (var attr_info in message_project.AttributeInfos)
+                                {
+                                    if (attr_info.Value.Offset >= reader.BaseStream.Length)
+                                        continue;
+
+                                    reader.BaseStream.Seek(attr_info.Value.Offset, SeekOrigin.Begin);
+
+                                    string value = "";
+
+                                    if (attr_info.Value.Type == 9) //list
+                                    {
+                                        byte id = reader.ReadByte();
+                                        value = attr_info.Value.List[id];
+                                    }
+                                    else if (attr_info.Value.Type == 2) //uint
+                                        value = reader.ReadUInt32().ToString();
+                                    else if (attr_info.Value.Type == 8) //uint
+                                        value = reader.ReadByte().ToString();
+
+                                    attributeNode.Add($"{attr_info.Key}", value);
+                                }
+                            }
+                            messageNode.Add("MSBP_Attribute", attributeNode);
+                        }
+                        else
+                            messageNode.Add("Attribute", ByteArrayToString(item.Value.Attribute.Data));
                     }
                 }
 
                 if (HasStyleIndices)
                 {
-                    messageNode.Add("StyleID", item.Value.StyleIndex.ToString());
+                    if (item.Value.StyleIndex != -1 && message_project != null && message_project.Styles.Keys.Count > item.Value.StyleIndex)
+                    {
+                        var style = message_project.Styles.Keys.ToList()[item.Value.StyleIndex];
+                        messageNode.Add($"MSBP_Style", style.ToString());
+                    }
+                    else
+                        messageNode.Add("StyleID", item.Value.StyleIndex.ToString());
                 }
-
-                messagesNode.Add((string)item.Key, messageNode);
+                if (item.Key is int)
+                    messagesNode.Add(((int)item.Key).ToString(), messageNode);
+                else
+                    messagesNode.Add((string)item.Key, messageNode);
             }
 
             string encoding = "";
@@ -217,10 +568,13 @@ namespace CLMS
             root.Add("Encoding", encoding);
             root.Add("SlotNum", LabelSlotCount.ToString());
             root.Add("Messages", messagesNode);
+            if (this.ATO1Content?.Length > 0)
+                root.Add("ATO1Content", ByteArrayToString(this.ATO1Content, true));
 
             return root.Print();
         }
-        public static MSBT FromYaml(string yaml)
+
+        public static MSBT FromYaml(string yaml, MSBP message_project)
         {
             MSBT msbt = new();
 
@@ -235,12 +589,23 @@ namespace CLMS
                     case "Version":
                         msbt.VersionNumber = byte.Parse(value);
                         break;
+                    case "ATO1Content":
+                        msbt.ATO1Content = StringToByteArray(value);
+                        msbt.HasATO1 = true;
+                        break;
                     case "IsBigEndian":
                         msbt.ByteOrder = bool.Parse(value) ? ByteOrder.BigEndian : ByteOrder.LittleEndian;
                         break;
                     case "UseIndices":
                     case "UseIndexes":
                         msbt.HasNLI1 = bool.Parse(value);
+                        if (msbt.HasNLI1)
+                        {
+                            msbt.Messages = new LMSDictionary<Message>()
+                            {
+                                Type = LMSDictionaryKeyType.Indices
+                            };
+                        };
                         break;
                     case "UseStyles":
                         msbt.HasStyleIndices = bool.Parse(value);
@@ -295,13 +660,55 @@ namespace CLMS
                                         message.Attribute = new(new byte[0], attributeNode.ToString());
                                     }
                                 }
+                                if (messageNode.Children.ContainsKey(new YamlScalarNode("MSBP_Attribute")))
+                                {
+                                    var mem = new MemoryStream();
+                                    using (var writer = new BinaryWriter(mem))
+                                    {
+                                        writer.Write(new byte[17]);
+
+                                        var attributeNode = (YamlMappingNode)messageNode.ChildrenByKey("MSBP_Attribute");
+                                        foreach (var child in attributeNode.Children)
+                                        {
+                                            var name = ((YamlScalarNode)child.Key).Value;
+                                            var attr_value = child.Value.ToString();
+
+                                            if (message_project.AttributeInfos.ContainsKey(name))
+                                            {
+                                                var attr = message_project.AttributeInfos[name];
+
+                                                writer.Seek((int)attr.Offset, SeekOrigin.Begin);
+
+                                                if (attr.Type == 9) //list
+                                                {
+                                                    int index = attr.List.IndexOf(attr_value);
+                                                    if (index != -1)
+                                                        writer.Write((byte)index);
+                                                }
+                                                else if (attr.Type == 8) //byte
+                                                    writer.Write((byte)int.Parse(attr_value));
+                                                else if (attr.Type == 2) //uint
+                                                    writer.Write((uint)int.Parse(attr_value));
+                                            }
+                                        }
+                                    }
+
+                                    message.Attribute = new Attribute(mem.ToArray());
+                                }
                             }
 
                             if (msbt.HasStyleIndices)
                             {
                                 var attributeNode = messageNode.ChildrenByKey("StyleID");
-
-                                message.StyleIndex = int.Parse(attributeNode.ToString());
+                                var attributeNodeMSBP = messageNode.ChildrenByKey("MSBP_Style");
+                                if (attributeNodeMSBP != null)
+                                {
+                                    int index = message_project.Styles.Keys.ToList().IndexOf(attributeNodeMSBP.ToString());
+                                    if (index != -1)
+                                        message.StyleIndex = index;
+                                }
+                                else
+                                    message.StyleIndex = int.Parse(attributeNode.ToString());
                             }
 
                             if (messageNode.Children.ContainsKey(new YamlScalarNode("Tags")))
@@ -334,6 +741,13 @@ namespace CLMS
                                                     break;
                                                 case "Parameters":
                                                     tag.Parameters = StringToByteArray(tagChildValue);
+                                                    break;
+                                                case "Msbp_Tag":
+                                                    //string array ,
+                                                    string[] values = tagChildValue.Split(",");
+                                                    var t = message_project.TryGetTagConfigByControlTag(values[0], values[1]);
+                                                    tag.Group = t.Group;
+                                                    tag.Type = t.Type;
                                                     break;
                                                 case "RegionEndMarkerBytes":
                                                     tagEnd = new(StringToByteArray(tagChildValue));
@@ -434,7 +848,15 @@ namespace CLMS
                                 message.Contents.Add(contentsNode.ToString().Replace($"\\{Tag.SeparatorChars[0]}", $"{Tag.SeparatorChars[0]}"));
                             }
 
-                            msbt.Messages.Add(messageChild.Key.ToString(), message);
+                            if (msbt.HasNLI1)
+                            {
+                                if (int.TryParse(messageChild.Key.ToString(), out int label_id))
+                                    msbt.Messages.Add(label_id, message);
+                                else
+                                    throw new Exception($"Invalid label ID {messageChild.Key}! Must be number!");
+                            }
+                            else
+                                msbt.Messages.Add(messageChild.Key.ToString(), message);
                         }
                         break;
                 }
@@ -559,6 +981,10 @@ namespace CLMS
         {
             Messages.Remove(key);
         }
+        public void RemoveMessageByKey(int key)
+        {
+            Messages.Remove(key);
+        }
         public void RemoveMessageByIndex(int index)
         {
             Messages.Remove(Messages.Keys.ToArray()[index]);
@@ -566,6 +992,21 @@ namespace CLMS
         #endregion
 
         #region misc
+
+        public void CopyFrom(MSBT msbt)
+        {
+            VersionNumber = msbt.VersionNumber;
+            EncodingType = msbt.EncodingType;
+            ByteOrder = msbt.ByteOrder;
+            SizePerAttribute = msbt.SizePerAttribute;
+            LabelSlotCount = msbt.LabelSlotCount;
+            HasNLI1 = msbt.HasNLI1;
+            HasAttributes = msbt.HasAttributes;
+            HasStyleIndices = msbt.HasStyleIndices;
+            HasATO1 = msbt.HasATO1;
+            ATO1Content = msbt.ATO1Content;
+            Messages = msbt.Messages;
+        }
 
         // temporary (planned to get replaced by another system)
         public void SetATO1(byte[] value)
@@ -789,6 +1230,11 @@ namespace CLMS
                     }
 
                     uint cStringOffset = BitConverter.ToUInt32(cAttributeBytes[0..4]); // BitConverter.ToUInt32(cAttributeBytes[(cAttributeBytes.Length - 4)..cAttributeBytes.Length]);
+                    if (cStringOffset > cSectionSize || cStringOffset < (8 + (numOfAttributes * sizePerAttribute)))
+                    {
+                        attributeList.Add(new(cAttributeBytes));
+                        continue;
+                    }
 
                     reader.Position = startPosition + cStringOffset;
 
@@ -851,11 +1297,13 @@ namespace CLMS
                 Message cMessage = new();
                 if (isTSY1)
                 {
-                    cMessage.StyleIndex = sty1.StyleIndices[i];
+                    if (sty1.StyleIndices.Length > i)
+                        cMessage.StyleIndex = sty1.StyleIndices[i];
                 }
                 if (isATR1)
                 {
-                    cMessage.Attribute = atr1.Attributes[i];
+                    if (atr1.Attributes.Length > i)
+                        cMessage.Attribute = atr1.Attributes[i];
                 }
                 uint cStringOffset = reader.ReadUInt32();
                 long positionBuf = reader.Position;
@@ -1008,7 +1456,7 @@ namespace CLMS
             writer.Write((uint)messages.Length);
             writer.Write(SizePerAttribute);
 
-            if (UsesAttributeStrings)
+            if (UsesAttributeStrings && messages.Length > 0 && !string.IsNullOrEmpty(messages[0].Attribute.String))
             {
                 long hashTablePosBuf = writer.Position;
                 writer.Position += messages.Length * SizePerAttribute;
@@ -1030,11 +1478,22 @@ namespace CLMS
 
                     writer.GoBackWriteRestore(hashTablePosBuf + (i * SizePerAttribute), cAttribute);
 
-                    writer.Write(messages[i].Attribute.String, BinaryStringFormat.NoPrefixOrTermination);
+                    if (messages[i].Attribute.String != null)
+                        writer.Write(messages[i].Attribute.String, BinaryStringFormat.NoPrefixOrTermination);
 
                     // manually reimplimenting null termination because BinaryStringFormat sucks bruh
                     writer.WriteChar(0x00);
                 }
+            }
+            else if (UsesAttributeStrings)
+            {
+                //empty list
+                for (uint i = 0; i < messages.Length; i++)
+                {
+                    if (messages[i].Attribute != null)
+                        writer.Write(messages[i].Attribute.Data[0..(int)SizePerAttribute]);
+                }
+                writer.Write(new byte[messages.Length]);
             }
             else
             {
@@ -1126,7 +1585,7 @@ namespace CLMS
         {
             public Dictionary<uint, uint> NumLines;
         }
-        internal class ATO1
+        public class ATO1
         {
             public byte[] Content;
         }
